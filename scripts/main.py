@@ -1,27 +1,36 @@
 from argparse import ArgumentParser
 
+import numpy as np
+
+from lib.anneal import anneal_step
 from lib.grouped_environments import GroupedEnvironments
+from lib.model import get_model, sample_actions
 
 
-def main(env_name: str, steps: int, learning_rate: float, temperature: float, group_size: int, batch_size: int, num_iters: int) -> None:
+def main(env_name: str, anneal_steps: int, learning_rate: float, temperature: float, group_size: int, batch_size: int, optim_steps: int) -> None:
     envs = GroupedEnvironments(env_name, group_size, batch_size)
-    obs = envs.reset()
+    model = get_model(envs.num_observations, envs.num_actions, hidden=[])
 
-    print(envs.num_observations)
-    print(envs.num_actions)
+    for _ in range(anneal_steps):
+        actions, probs, rewards = sample_actions(model, envs)
+        loss = anneal_step(model, actions, probs, rewards, learning_rate, temperature, optim_steps)
+        print(f"Annealing step {_}/{anneal_steps}: avg_reward - {np.mean(rewards)}, loss - {loss}")
 
 
 def parse_args() -> tuple[str, int, float, float, int, int, int]:
+    # fmt: off
     parser = ArgumentParser()
-    parser.add_argument("--env_name", type=str, default="CartPole-v1")
-    parser.add_argument("--steps", type=int, default=100)
-    parser.add_argument("--learning_rate", type=float, default=0.01)
-    parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--group_size", type=int, default=8)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--num_iters", type=int, default=1)
+    parser.add_argument("--env_name", type=str, default="CartPole-v1", help="The name of the environment to run")
+    parser.add_argument("--anneal_steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
+    parser.add_argument("--learning_rate", type=float, default=0.01, help="The learning rate for the optimizer")
+    parser.add_argument("--temperature", type=float, default=1.0, help="The temperature of the annealing algorithm")
+    parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
+    parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
+    parser.add_argument("--optim_steps", type=int, default=1, help="The number of optimization steps within each annealing step")
     args = parser.parse_args()
-    return args.env_name, args.steps, args.learning_rate, args.temperature, args.group_size, args.batch_size, args.num_iters
+    # fmt: on
+
+    return args.env_name, args.anneal_steps, args.learning_rate, args.temperature, args.group_size, args.batch_size, args.optim_steps
 
 
 if __name__ == "__main__":
