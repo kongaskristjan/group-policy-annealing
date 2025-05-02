@@ -5,9 +5,10 @@ import numpy as np
 from gymnasium.core import ObsType
 
 
-class GroupEnvironment:
+class GroupedEnvironments:
     """
-    A group of environments that are reset with identical seeds within each group. Rewards and dones are accumulated over the group.
+    An environment grouping class of size `batch_size` that contains multiple environments that are reset with identical
+    seeds within each group of size `group_size`. Rewards and dones are accumulated over the group.
     """
 
     def __init__(self, env_name: str, group_size: int, batch_size: int, seed: int | None = None):

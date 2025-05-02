@@ -1,14 +1,14 @@
 from argparse import ArgumentParser
 
-from lib.group_environment import GroupEnvironment
+from lib.grouped_environments import GroupedEnvironments
 
 
 def main(env_name: str, steps: int, learning_rate: float, temperature: float, group_size: int, batch_size: int, num_iters: int) -> None:
-    env = GroupEnvironment(env_name, group_size, batch_size)
-    obs = env.reset()
+    envs = GroupedEnvironments(env_name, group_size, batch_size)
+    obs = envs.reset()
 
-    print(env.num_observations)
-    print(env.num_actions)
+    print(envs.num_observations)
+    print(envs.num_actions)
 
 
 def parse_args() -> tuple[str, int, float, float, int, int, int]:

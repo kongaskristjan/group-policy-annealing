@@ -1,10 +1,10 @@
 import numpy as np
 
-from lib.group_environment import GroupEnvironment
+from lib.grouped_environments import GroupedEnvironments
 
 
 def test_observation_seeding():
-    env = GroupEnvironment(env_name="CartPole-v1", group_size=2, batch_size=8)
+    env = GroupedEnvironments(env_name="CartPole-v1", group_size=2, batch_size=8)
     obs = env.reset()
     assert env.envs.num_envs == 8
 
@@ -23,7 +23,7 @@ def test_done_and_reward_accumulation():
     batch_size = 4
 
     # Test that done is False when the first step is taken
-    env = GroupEnvironment(env_name="CartPole-v1", group_size=1, batch_size=batch_size)
+    env = GroupedEnvironments(env_name="CartPole-v1", group_size=1, batch_size=batch_size)
     input_actions = np.array([0] * batch_size)
     obs, done = env.step(input_actions)
     assert not done
