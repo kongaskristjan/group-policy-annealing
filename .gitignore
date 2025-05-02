@@ -1,0 +1,7 @@
+runs/
+
+.python-version
+__pycache__/
+*.pyc
+
+*.swp
