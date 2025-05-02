@@ -2,6 +2,7 @@ import random
 
 import gymnasium as gym
 import numpy as np
+import torch
 from gymnasium.core import ObsType
 
 
@@ -27,7 +28,7 @@ class GroupedEnvironments:
         self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync")
         self.reset()
 
-    def reset(self) -> np.ndarray:
+    def reset(self) -> torch.Tensor:
         """
         Resets the rewards and environments with identical seeds within each group.
         """
@@ -39,30 +40,33 @@ class GroupedEnvironments:
         obs, infos = self.envs.reset(seed=group_seeds)
         return self._transform_observation(obs)
 
-    def step(self, actions: np.ndarray) -> tuple[np.ndarray, bool]:
+    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, bool]:
         """
         Steps the environments with the given actions and accumulates rewards.
         """
-        obs, rewards, done_mask, truncations, infos = self.envs.step(actions)
+        actions_np = actions.cpu().numpy()
+        obs, rewards, done_mask, truncations, infos = self.envs.step(actions_np)
         if len(self.done_masks) > 0:
             done_mask = np.logical_or(done_mask, self.done_masks[-1])
         self.rewards += rewards * np.logical_not(done_mask)
         self.done_masks.append(done_mask)
 
-        done = done_mask.all()
+        done = bool(done_mask.all())
         return self._transform_observation(obs), done
 
-    def get_rewards(self) -> np.ndarray:
+    def get_rewards(self) -> torch.Tensor:
         assert self.env_name == "CartPole-v1", "Only CartPole-v1 is supported for now"
 
         # Normalize rewards to be between 0 and 1 (CartPole-v1 max reward is 500)
-        return self.rewards / 500
+        normalized = self.rewards / 500
+        return torch.from_numpy(normalized).to(torch.float32)
 
-    def get_done_mask(self) -> np.ndarray:
+    def get_done_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
-        return np.array(self.done_masks).T
+        done_masks = np.array(self.done_masks).T
+        return torch.from_numpy(done_masks).to(torch.float32)
 
-    def _transform_observation(self, obs: ObsType) -> np.ndarray:
+    def _transform_observation(self, obs: ObsType) -> torch.Tensor:
         """
         Returns the transformed observations for each environment in the batch.
         """
@@ -73,4 +77,4 @@ class GroupedEnvironments:
         obs[:, 2] /= 0.418  # pole_angle (-0.418, 0.418) -> (-1, 1)
         obs[:, 3] /= 0.418 * 10  # pole_velocity (-inf, inf) -> (-inf, inf)
 
-        return obs
+        return torch.from_numpy(obs).to(torch.float32)

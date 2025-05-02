@@ -1,4 +1,4 @@
-import numpy as np
+import torch
 
 from lib.grouped_environments import GroupedEnvironments
 
@@ -9,14 +9,14 @@ def test_observation_seeding():
     assert env.envs.num_envs == 8
 
     # Verify that environments within each group are identical but different from other groups
-    assert np.allclose(obs[0], obs[1])
-    assert not np.allclose(obs[1], obs[2])
-    assert np.allclose(obs[2], obs[3])
-    assert not np.allclose(obs[3], obs[4])
-    assert np.allclose(obs[4], obs[5])
-    assert not np.allclose(obs[5], obs[6])
-    assert np.allclose(obs[6], obs[7])
-    assert not np.allclose(obs[7], obs[0])
+    assert torch.allclose(obs[0], obs[1])
+    assert not torch.allclose(obs[1], obs[2])
+    assert torch.allclose(obs[2], obs[3])
+    assert not torch.allclose(obs[3], obs[4])
+    assert torch.allclose(obs[4], obs[5])
+    assert not torch.allclose(obs[5], obs[6])
+    assert torch.allclose(obs[6], obs[7])
+    assert not torch.allclose(obs[7], obs[0])
 
 
 def test_done_and_reward_accumulation():
@@ -24,7 +24,7 @@ def test_done_and_reward_accumulation():
 
     # Test that done is False when the first step is taken
     env = GroupedEnvironments(env_name="CartPole-v1", group_size=1, batch_size=batch_size)
-    input_actions = np.array([0] * batch_size)
+    input_actions = torch.zeros(batch_size, dtype=torch.int64)
     obs, done = env.step(input_actions)
     assert not done
 
@@ -36,7 +36,7 @@ def test_done_and_reward_accumulation():
 
     # Test that done mask is False for all environments at the first step and True for all environments at the last step
     done_mask = env.get_done_mask()
-    assert np.logical_not(done_mask[:, 0]).all()
+    assert torch.logical_not(done_mask[:, 0]).all()
     assert done_mask[:, steps].all()
 
     # Test that rewards are accumulated
