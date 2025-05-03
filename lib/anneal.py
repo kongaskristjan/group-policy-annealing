@@ -31,12 +31,14 @@ def anneal_batch_episode(
     Returns:
         The loss during each step of the annealing.
     """
+    device = next(model.parameters()).device
+    assert all(p.device == device for p in model.parameters())  # Check that all parameters are on the same device
 
     batch_size, steps, num_observations = observations.shape
-    observations = observations.to(model.device)
-    actions = actions.to(model.device)
-    rewards = rewards.to(model.device)
-    done_mask = done_mask.to(model.device)
+    observations = observations.to(device)
+    actions = actions.to(device)
+    rewards = rewards.to(device)
+    done_mask = done_mask.to(device)
 
     # Training loop
     losses = []

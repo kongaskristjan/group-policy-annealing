@@ -1,6 +1,51 @@
 import torch
 
-from lib.anneal import annealing_loss
+from lib.anneal import anneal_batch_episode, annealing_loss
+from lib.model import get_model
+
+
+def test_anneal_batch_episode_simple():
+    # Create a simple test with 2 trajectories of length 1
+    # One trajectory has reward 1.0, the other has reward 0.0
+    # Set up a linear model with no hidden layers - note that the layer is initialized with zeros
+    model = get_model(num_observations=1, num_actions=2, hidden=[])
+
+    # Create observations, actions, rewards for 2 trajectories
+    observations = torch.Tensor([[[-0.5]], [[0.5]]])  # 2 trajectories, 1 step, 1 observation
+    actions = torch.zeros(2, 1, dtype=torch.long)  # Both take action 0
+    rewards = torch.tensor([1.0, 0.0])  # First trajectory gets reward 1.0, second gets 0.0
+    done_mask = torch.tensor([[False], [False]])  # Both trajectories are not done
+
+    # Setup optimizer with higher learning rate
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
+
+    # Run annealing with lower temperature and more steps
+    anneal_batch_episode(
+        model=model,
+        observations=observations,
+        actions=actions,
+        rewards=rewards,
+        done_mask=done_mask,
+        optimizer=optimizer,
+        temperature=1.0,  # Lower temperature makes the reward difference more significant
+        group_size=2,  # Trajectories are compared with each other and form 2 groups
+        optim_steps=20,  # Lots of optimization to ensure convergence
+    )
+
+    # Get probabilities after annealing
+    with torch.no_grad():
+        logits = model(observations.view(2, 1))
+        probs = torch.softmax(logits, dim=1)
+
+        # Probability of action 0 for trajectory with reward 1.0
+        p_higher_reward = probs[0, 0].item()
+        # Probability of action 0 for trajectory with reward 0.0
+        p_lower_reward = probs[1, 0].item()
+
+    # Verify that annealing skewed the probabilities correctly
+    # Difference between probabilities should be exp(1.0/1.0) = e with ideal annealing
+    assert p_lower_reward < 0.5 * p_higher_reward and p_lower_reward > 0.25 * p_higher_reward
+    # Note that both probabilities are lower than initially due to softmax gradient dynamics
 
 
 def test_gradient_direction_and_symmetry():
@@ -46,8 +91,6 @@ def test_masking_and_unpicked_gradients():
     loss.backward()
 
     assert softmax_output.grad is not None
-
-    print(f"softmax_output.grad: {softmax_output.grad}")
 
     # Traj 0, Step 0 (Unmasked): Action 0 taken, Action 1 unpicked
     assert not torch.allclose(softmax_output.grad[0, 0, 0], torch.tensor(0.0))  # Grad for taken action
