@@ -12,7 +12,7 @@ class GroupedEnvironments:
     seeds within each group of size `group_size`. Rewards and dones are accumulated over the group.
     """
 
-    def __init__(self, env_name: str, group_size: int, batch_size: int, seed: int | None = None):
+    def __init__(self, env_name: str, group_size: int, batch_size: int, seed: int | None = None, max_steps: int | None = None):
         assert group_size > 0 and batch_size > 0, "Group size and batch size must be positive"
         assert batch_size % group_size == 0, "Batch size must be divisible by group size"
 
@@ -25,6 +25,9 @@ class GroupedEnvironments:
         self.batch_size = batch_size
         self.rng = random.Random(seed)
 
+        self.current_step = 0
+        self.max_steps = max_steps
+
         self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync")
         self.reset()
 
@@ -34,6 +37,7 @@ class GroupedEnvironments:
         """
         self.rewards = np.zeros((self.batch_size,), dtype=np.float32)
         self.done_masks: list[np.ndarray] = []
+        self.current_step = 0
 
         group_seeds = [self.rng.randint(0, 2**32 - 1) for _ in range(self.batch_size // self.group_size)]
         group_seeds = [group_seeds[i // self.group_size] for i in range(self.batch_size)]
@@ -43,7 +47,16 @@ class GroupedEnvironments:
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, bool]:
         """
         Steps the environments with the given actions and accumulates rewards.
+        Returns the observations in torch format and a done mask.
+
+        Args:
+            actions: Tensor of actions (batch_size, steps)
+
+        Returns:
+            observations: Tensor of observations (batch_size, steps)
+            done_mask: Tensor of done masks (batch_size, steps)
         """
+
         actions_np = actions.cpu().numpy()
         obs, rewards, done_mask, truncations, infos = self.envs.step(actions_np)
         if len(self.done_masks) > 0:
@@ -52,6 +65,9 @@ class GroupedEnvironments:
         self.done_masks.append(done_mask)
 
         done = bool(done_mask.all())
+        if self.max_steps is not None and self.current_step >= self.max_steps:
+            done = True
+        self.current_step += 1
         return self._transform_observation(obs), done
 
     def get_rewards(self) -> torch.Tensor:
