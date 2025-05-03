@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 
 import numpy as np
+import torch
 
 from lib.anneal import anneal_batch_episode
 from lib.grouped_environments import GroupedEnvironments
@@ -10,10 +11,11 @@ from lib.model import get_model, sample_batch_episode
 def main(env_name: str, anneal_steps: int, learning_rate: float, temperature: float, group_size: int, batch_size: int, optim_steps: int) -> None:
     envs = GroupedEnvironments(env_name, group_size, batch_size)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[])
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     for _ in range(anneal_steps):
-        actions, probs, rewards, done_mask = sample_batch_episode(model, envs)
-        loss = anneal_batch_episode(model, actions, probs, rewards, done_mask, learning_rate, temperature, optim_steps)
+        observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
+        loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temperature, optim_steps)[0]
         print(f"Annealing step {_}/{anneal_steps}: avg_reward - {np.mean(rewards)}, loss - {loss}")
 
 

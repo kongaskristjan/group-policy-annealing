@@ -33,20 +33,19 @@ def test_get_model_different_hidden_sizes():
 def test_sample_batch_episode():
     """Test sampling actions from a model."""
     # Create a model for CartPole-v1 which has 4 observations and 2 actions
-    group_size, batch_size = 2, 4
+    group_size, batch_size = 2, 6
     envs = GroupedEnvironments("CartPole-v1", group_size, batch_size, seed=42)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[8])
 
     # Sample actions
-    actions, probs, rewards, done_mask = sample_batch_episode(model, envs)
+    observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
 
     # Check the shapes of the tensors
     steps = actions.shape[1]
+    assert observations.shape == (batch_size, steps, envs.num_observations)
     assert actions.shape == (batch_size, steps)
-    assert probs.shape == (batch_size, steps)
     assert rewards.shape == (batch_size,)
     assert done_mask.shape == (batch_size, steps)
 
-    # Check that probs and actions are valid
-    assert torch.all(0 < probs) and torch.all(probs < 1)
+    # Check that actions are valid
     assert torch.all((actions >= 0) & (actions < envs.num_actions))

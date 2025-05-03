@@ -20,34 +20,35 @@ def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> t
     """
     Sample actions from the model in the given environment.
     Returns:
+        - observations: Tensor of observations (batch_size, steps, num_observations)
         - actions: Tensor of sampled actions (batch_size, steps)
-        - probs: Tensor of selected action probabilities (batch_size, steps)
         - rewards: Tensor of rewards from the environment (batch_size,)
         - done_mask: Tensor of done masks (batch_size, steps)
     """
     # Reset the environment to start a new episode
-    observations = envs.reset()
-    probs: list[torch.Tensor] = []
     actions: list[torch.Tensor] = []
+    observations: list[torch.Tensor] = []
 
     # Simulate the environment and policy as long as needed
     done = False
+    cur_observations = envs.reset()  # (batch_size, num_observations)
     while not done:
-        logits = model(observations)
-        current_probs = torch.nn.functional.softmax(logits, dim=1)
-        current_actions = torch.multinomial(current_probs, num_samples=1).squeeze(-1)
-        observations, done = envs.step(current_actions)
-        selected_probs = current_probs[torch.arange(current_probs.shape[0]), current_actions]
+        observations.append(cur_observations)
 
-        probs.append(selected_probs)
-        actions.append(current_actions)
+        # Sample an action from the model
+        logits = model(cur_observations)  # (batch_size, num_actions)
+        cur_probs = torch.nn.functional.softmax(logits, dim=1)  # (batch_size, num_actions)
+        cur_actions = torch.multinomial(cur_probs, num_samples=1).squeeze(-1)  # (batch_size,)
+        cur_observations, done = envs.step(cur_actions)  # (batch_size, num_observations), bool
+
+        actions.append(cur_actions)
 
     # Get the rewards and done mask from the environment
-    rewards = envs.get_rewards()
-    done_mask = envs.get_done_mask()
+    rewards = envs.get_rewards()  # (batch_size,)
+    done_mask = envs.get_done_mask()  # (batch_size, steps)
 
-    # Transpose the actions and probs to be (batch_size, num_steps)
-    actions_t = torch.transpose(torch.stack(actions), 0, 1)
-    probs_t = torch.transpose(torch.stack(probs), 0, 1)
+    # Transpose the actions and probs (steps, batch_size) -> (batch_size, steps)
+    observations_t = torch.transpose(torch.stack(observations), 0, 1)  # (batch_size, steps, num_observations)
+    actions_t = torch.transpose(torch.stack(actions), 0, 1)  # (batch_size, steps)
 
-    return actions_t, probs_t, rewards, done_mask
+    return observations_t, actions_t, rewards, done_mask
