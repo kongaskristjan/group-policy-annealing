@@ -24,10 +24,10 @@ def parse_args() -> tuple[str, int, float, float, int, int, int]:
     parser.add_argument("--env_name", type=str, default="CartPole-v1", help="The name of the environment to run")
     parser.add_argument("--anneal_steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
     parser.add_argument("--learning_rate", type=float, default=0.01, help="The learning rate for the optimizer")
-    parser.add_argument("--temperature", type=float, default=1.0, help="The temperature of the annealing algorithm")
+    parser.add_argument("--temperature", type=float, default=0.001, help="The temperature of the annealing algorithm")
     parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
     parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
-    parser.add_argument("--optim_steps", type=int, default=1, help="The number of optimization steps within each annealing step")
+    parser.add_argument("--optim_steps", type=int, default=10, help="The number of optimization steps within each annealing step")
     args = parser.parse_args()
     # fmt: on
 
