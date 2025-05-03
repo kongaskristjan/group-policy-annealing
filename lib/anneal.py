@@ -52,7 +52,13 @@ def anneal_batch_episode(
 
 
 def annealing_loss(
-    output: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, done_mask: torch.Tensor, temperature: float, group_size: int
+    output: torch.Tensor,
+    actions: torch.Tensor,
+    rewards: torch.Tensor,
+    done_mask: torch.Tensor,
+    temperature: float,
+    group_size: int,
+    apply_softmax: bool = True,
 ) -> torch.Tensor:
     """
     Compute the loss for the annealing.
@@ -64,6 +70,7 @@ def annealing_loss(
         done_mask: The done mask (batch_size, steps)
         temperature: The temperature
         group_size: The number of environments in each group with identical environment seeds
+        apply_softmax: Whether to apply softmax to the output
 
     Returns:
         The annealing loss, comparing the probability of the actions taken to the target probability
@@ -79,7 +86,10 @@ def annealing_loss(
     done_mask = done_mask.view(num_groups, group_size, steps)
 
     # Gather the log-probabilities of the actions taken
-    log_probs = torch.log_softmax(output, dim=3)  # (num_groups, group_size, steps, num_actions)
+    if apply_softmax:
+        log_probs = torch.log_softmax(output, dim=3)  # (num_groups, group_size, steps, num_actions)
+    else:
+        log_probs = torch.log(output)  # (num_groups, group_size, steps, num_actions)
     selected_log_probs = torch.gather(log_probs, dim=3, index=actions.unsqueeze(3)).squeeze(3)  # (num_groups, group_size, steps)
 
     # Assign the equivalent of random actions with equal probability to the actions after the episode is done
