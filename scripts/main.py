@@ -9,7 +9,7 @@ from lib.model import get_model, sample_batch_episode
 
 def main(env_name: str, anneal_steps: int, learning_rate: float, temperature: float, group_size: int, batch_size: int, optim_steps: int) -> None:
     envs = GroupedEnvironments(env_name, group_size, batch_size)
-    model = get_model(envs.num_observations, envs.num_actions, hidden=[])
+    model = get_model(envs.num_observations, envs.num_actions, hidden=[32])
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     for _ in range(anneal_steps):
@@ -27,7 +27,7 @@ def parse_args() -> tuple[str, int, float, float, int, int, int]:
     parser.add_argument("--temperature", type=float, default=0.001, help="The temperature of the annealing algorithm")
     parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
     parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
-    parser.add_argument("--optim_steps", type=int, default=10, help="The number of optimization steps within each annealing step")
+    parser.add_argument("--optim_steps", type=int, default=30, help="The number of optimization steps within each annealing step")
     args = parser.parse_args()
     # fmt: on
 
