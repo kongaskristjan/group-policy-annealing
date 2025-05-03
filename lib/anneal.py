@@ -9,6 +9,7 @@ def anneal_batch_episode(
     done_mask: torch.Tensor,
     optimizer: torch.optim.Optimizer,
     temperature: float,
+    group_size: int,
     optim_steps: int,
 ) -> list[float]:
     """
@@ -16,18 +17,20 @@ def anneal_batch_episode(
 
     Args:
         model: The model to anneal
-        observations: Tensor of observations (batch_size, steps)
+        observations: Tensor of observations (batch_size, steps, num_observations)
         actions: Tensor of actions the model took (batch_size, steps)
         rewards: Tensor of rewards (batch_size,)
         done_mask: Tensor of done masks (batch_size, steps)
         optimizer: The optimizer to use for the annealing.
         temperature: The temperature to use for the annealing.
+        group_size: The number of environments in each group with identical environment seeds
         optim_steps: The number of optimization steps to take.
 
     Returns:
         The loss during each step of the annealing.
     """
 
+    batch_size, steps, num_observations = observations.shape
     observations = observations.to(model.device)
     actions = actions.to(model.device)
     rewards = rewards.to(model.device)
@@ -37,8 +40,8 @@ def anneal_batch_episode(
     losses = []
     for _ in range(optim_steps):
         optimizer.zero_grad()
-        output = model(observations)
-        current_loss = loss(output, actions, rewards, done_mask, temperature)
+        output = model(observations.view(batch_size * steps, num_observations))
+        current_loss = annealing_loss(output.view(batch_size, steps, -1), actions, rewards, done_mask, temperature, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
@@ -46,5 +49,51 @@ def anneal_batch_episode(
     return losses
 
 
-def loss(output: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, done_mask: torch.Tensor, temperature: float = 1.0) -> torch.Tensor:
-    pass
+def annealing_loss(
+    output: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, done_mask: torch.Tensor, temperature: float, group_size: int
+) -> torch.Tensor:
+    """
+    Compute the loss for the annealing.
+
+    Args:
+        output: The output of the model (batch_size, steps, num_actions)
+        actions: The actions (batch_size, steps)
+        rewards: The rewards (batch_size,)
+        done_mask: The done mask (batch_size, steps)
+        temperature: The temperature
+        group_size: The number of environments in each group with identical environment seeds
+
+    Returns:
+        The annealing loss, comparing the probability of the actions taken to the target probability
+        computed from the rewards and temperature by Boltzmann distribution.
+    """
+    batch_size, steps, num_actions = output.shape
+    num_groups = batch_size // group_size
+
+    # To (num_groups, group_size[, steps[, num_actions]])
+    output = output.view(num_groups, group_size, steps, num_actions)
+    actions = actions.view(num_groups, group_size, steps)
+    rewards = rewards.view(num_groups, group_size)
+    done_mask = done_mask.view(num_groups, group_size, steps)
+
+    # Gather the probabilities of the actions taken
+    probs = torch.softmax(output, dim=2)
+    selected_probs = torch.gather(probs, dim=3, index=actions.unsqueeze(3))  # (num_groups, group_size, steps)
+
+    # Assign the equivalent of random actions with equal probability to the actions after the episode is done
+    selected_probs = selected_probs.masked_fill(torch.logical_not(done_mask), 1 / num_actions)
+
+    # Compute the log-ratio matrix of the selected action's probabilities (num_groups, group_size, group_size)
+    log_selected_probs = torch.log(selected_probs)
+    log_total_probs = torch.sum(probs, dim=3)
+    log_prob_matrix = log_selected_probs.unsqueeze(1) - log_total_probs.unsqueeze(2)
+
+    # Target log-ratio matrix within each group based on rewards and temperature (num_groups, group_size, group_size)
+    reward_diffs = rewards.unsqueeze(1) - rewards.unsqueeze(2)
+    target_log_prob_matrix = reward_diffs / temperature
+
+    # Compute the loss for each group
+    loss = (log_prob_matrix - target_log_prob_matrix) ** 2
+    loss = torch.sum(loss)
+
+    return loss

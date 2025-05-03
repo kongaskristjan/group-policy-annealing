@@ -15,7 +15,7 @@ def main(env_name: str, anneal_steps: int, learning_rate: float, temperature: fl
 
     for _ in range(anneal_steps):
         observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
-        loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temperature, optim_steps)[0]
+        loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temperature, group_size, optim_steps)[0]
         print(f"Annealing step {_}/{anneal_steps}: avg_reward - {np.mean(rewards)}, loss - {loss}")
 
 

@@ -80,7 +80,7 @@ class GroupedEnvironments:
     def get_done_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
         done_masks = np.array(self.done_masks).T
-        return torch.from_numpy(done_masks).to(torch.float32)
+        return torch.from_numpy(done_masks).to(torch.bool)
 
     def _transform_observation(self, obs: ObsType) -> torch.Tensor:
         """
