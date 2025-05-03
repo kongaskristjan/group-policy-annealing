@@ -1,7 +1,7 @@
 import torch
 
 
-def anneal_step(
+def anneal_batch_episode(
     model: torch.nn.Module,
     actions: torch.Tensor,
     probs: torch.Tensor,

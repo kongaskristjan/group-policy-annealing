@@ -16,7 +16,7 @@ def get_model(num_observations: int, num_actions: int, hidden: list[int]) -> tor
     return torch.nn.Sequential(*layers)
 
 
-def sample_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Sample actions from the model in the given environment.
     Returns:
