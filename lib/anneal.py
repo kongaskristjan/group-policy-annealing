@@ -44,7 +44,7 @@ def anneal_batch_episode(
     losses = []
     for _ in range(optim_steps):
         optimizer.zero_grad()
-        output = model(observations.view(batch_size * steps, num_observations))
+        output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
         current_loss = annealing_loss(output.view(batch_size, steps, -1), actions, rewards, done_mask, temperature, group_size)
         current_loss.backward()
         optimizer.step()
