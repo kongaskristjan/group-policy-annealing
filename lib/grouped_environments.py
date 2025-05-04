@@ -1,4 +1,5 @@
 import random
+import warnings
 
 import gymnasium as gym
 import numpy as np
@@ -99,11 +100,14 @@ class GroupedEnvironments:
         """
         Returns the transformed observations for each environment in the batch.
         """
-        assert self.env_name == "CartPole-v1", "Only CartPole-v1 is supported for now"
-
-        obs[:, 0] /= 2.4  # cart_position (-2.4, 2.4) -> (-1, 1)
-        obs[:, 1] /= 2.4 * 10  # cart_velocity (-inf, inf) -> (-inf, inf)
-        obs[:, 2] /= 0.418  # pole_angle (-0.418, 0.418) -> (-1, 1)
-        obs[:, 3] /= 0.418 * 10  # pole_velocity (-inf, inf) -> (-inf, inf)
+        if self.env_name == "CartPole-v1":
+            obs[:, 0] /= 2.4  # cart_position (-2.4, 2.4) -> (-1, 1)
+            obs[:, 1] /= 2.4 * 10  # cart_velocity (-inf, inf) -> (-inf, inf)
+            obs[:, 2] /= 0.418  # pole_angle (-0.418, 0.418) -> (-1, 1)
+            obs[:, 3] /= 0.418 * 10  # pole_velocity (-inf, inf) -> (-inf, inf)
+        else:
+            warnings.warn(
+                f"Normalization coefficients not available for {self.env_name} observation space. You may still experiment with the environment."
+            )
 
         return torch.from_numpy(obs).to(torch.float32)

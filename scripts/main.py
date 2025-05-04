@@ -36,7 +36,10 @@ def main(
 
         observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
         loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temperature, group_size, optim_steps)[0]
-        print(f"Annealing [{step}/{anneal_steps} ({step * batch_size} samples)]: mean_reward - {torch.mean(rewards)}, loss - {loss}")
+
+        total_samples = step * batch_size
+        ep_length = torch.mean(torch.sum(torch.logical_not(done_mask), dim=1, dtype=torch.float32))
+        print(f"Annealing [{step}/{anneal_steps} ({total_samples} samples)]: reward - {torch.mean(rewards)}, eplength - {ep_length}, loss - {loss}")
 
 
 def parse_args() -> tuple[str, int, float, float, int, bool, int, int, int, int, int]:
