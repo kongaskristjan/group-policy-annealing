@@ -12,7 +12,7 @@ class GroupedEnvironments:
     seeds within each group of size `group_size`. Rewards and dones are accumulated over the group.
     """
 
-    def __init__(self, env_name: str, group_size: int, batch_size: int, seed: int | None = None, max_steps: int | None = None):
+    def __init__(self, env_name: str, group_size: int, batch_size: int, seed: int | None = None, max_steps: int | None = None, render: bool = False):
         assert group_size > 0 and batch_size > 0, "Group size and batch size must be positive"
         assert batch_size % group_size == 0, "Batch size must be divisible by group size"
 
@@ -27,8 +27,9 @@ class GroupedEnvironments:
 
         self.current_step = 0
         self.max_steps = max_steps
+        self.render = render
 
-        self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync")
+        self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync", render_mode="human" if render else None)
         self.reset()
 
     def reset(self) -> torch.Tensor:
@@ -59,6 +60,8 @@ class GroupedEnvironments:
 
         actions_np = actions.cpu().numpy()
         obs, rewards, done_mask, truncations, infos = self.envs.step(actions_np)
+        if self.render:
+            self.envs.render()
         if len(self.done_masks) > 0:
             done_mask = np.logical_or(done_mask, self.done_masks[-1])
         self.rewards += rewards * np.logical_not(done_mask)

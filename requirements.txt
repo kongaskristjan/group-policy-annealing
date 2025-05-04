@@ -1,4 +1,4 @@
 pytest==8.3.5
 pre-commit==4.2.0
-gymnasium==1.1.1
+gymnasium[classic_control, other]==1.1.1
 numpy==2.2.5

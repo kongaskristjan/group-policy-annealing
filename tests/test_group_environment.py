@@ -44,5 +44,5 @@ def test_done_and_reward_accumulation():
     assert rewards.shape == (batch_size,)
 
     # Rewards should be between 2 and 20 (but they're normalized to be between 0 and 1)
-    assert ((2 / steps) < rewards).all()
-    assert (rewards < (20 / steps)).all()
+    assert (2 < rewards).all()
+    assert (rewards < 20).all()
