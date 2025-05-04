@@ -42,6 +42,15 @@ def anneal_batch_episode(
     rewards = rewards.to(device)
     done_mask = done_mask.to(device)
 
+    with torch.no_grad():
+        output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
+        output = output.view(batch_size, steps, -1)
+        log_probs = torch.log_softmax(output, dim=2)
+
+    initial_diffs = compute_output_log_prob_diffs(log_probs, actions, done_mask, group_size)
+    target_diffs = compute_target_log_prob_diffs(rewards, temperature, group_size)
+    clipped_target_diffs = torch.clamp(target_diffs, initial_diffs - clip_eps, initial_diffs + clip_eps)
+
     # Training loop
     losses = []
     for _ in range(optim_steps):
@@ -49,7 +58,7 @@ def anneal_batch_episode(
         output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
-        current_loss = annealing_loss(log_probs, actions, rewards, done_mask, temperature, group_size)
+        current_loss = annealing_loss(log_probs, actions, done_mask, clipped_target_diffs, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
@@ -60,22 +69,20 @@ def anneal_batch_episode(
 def annealing_loss(
     log_probs: torch.Tensor,
     actions: torch.Tensor,
-    rewards: torch.Tensor,
     done_mask: torch.Tensor,
-    temperature: float,
+    target_diffs: torch.Tensor,
     group_size: int,
 ) -> torch.Tensor:
     """
     Compute the loss for the annealing.
 
     Args:
-        output: The output of the model (batch_size, steps, num_actions)
+        log_probs: The log probabilities of the actions (batch_size, steps, num_actions)
         actions: The actions (batch_size, steps)
-        rewards: The rewards (batch_size,)
         done_mask: The done mask (batch_size, steps)
-        temperature: The temperature
+        target_diffs: The target log-ratio matrix of the selected action's probabilities (num_groups, group_size, group_size)
         group_size: The number of environments in each group with identical environment seeds
-        apply_softmax: Whether to apply softmax to the output
+
 
     Returns:
         The annealing loss, comparing the probability of the actions taken to the target probability
@@ -86,10 +93,9 @@ def annealing_loss(
 
     # Compute output and target log-ratio matrices of the selected action's probabilities (num_groups, group_size, group_size)
     output_log_prob_diffs = compute_output_log_prob_diffs(log_probs, actions, done_mask, group_size)
-    target_log_prob_diffs = compute_target_log_prob_diffs(rewards, temperature, group_size)
 
     # Compute the loss based on output and target differences
-    loss = (output_log_prob_diffs - target_log_prob_diffs) ** 2  # (num_groups, group_size, group_size)
+    loss = (output_log_prob_diffs - target_diffs) ** 2  # (num_groups, group_size, group_size)
     valid_values = num_groups * group_size * (group_size - 1)
     loss = torch.sum(loss) / valid_values  # ()
 
