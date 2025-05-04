@@ -71,11 +71,7 @@ class GroupedEnvironments:
         return self._transform_observation(obs), done
 
     def get_rewards(self) -> torch.Tensor:
-        assert self.env_name == "CartPole-v1", "Only CartPole-v1 is supported for now"
-
-        # Normalize rewards to be between 0 and 1 (CartPole-v1 max reward is 500)
-        normalized = self.rewards / 500
-        return torch.from_numpy(normalized).to(torch.float32)
+        return torch.from_numpy(self.rewards).to(torch.float32)
 
     def get_done_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
