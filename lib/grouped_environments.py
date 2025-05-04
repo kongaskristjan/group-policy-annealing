@@ -59,7 +59,9 @@ class GroupedEnvironments:
         """
 
         actions_np = actions.cpu().numpy()
-        obs, rewards, done_mask, truncations, infos = self.envs.step(actions_np)
+        obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
+        done_mask = np.logical_or(termination_mask, truncation_mask)
+
         if self.render:
             self.envs.render()
         if len(self.done_masks) > 0:
