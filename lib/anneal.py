@@ -47,7 +47,9 @@ def anneal_batch_episode(
     for _ in range(optim_steps):
         optimizer.zero_grad()
         output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
-        current_loss = annealing_loss(output.view(batch_size, steps, -1), actions, rewards, done_mask, temperature, group_size)
+        output = output.view(batch_size, steps, -1)
+        log_probs = torch.log_softmax(output, dim=2)
+        current_loss = annealing_loss(log_probs, actions, rewards, done_mask, temperature, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
@@ -56,13 +58,12 @@ def anneal_batch_episode(
 
 
 def annealing_loss(
-    output: torch.Tensor,
+    log_probs: torch.Tensor,
     actions: torch.Tensor,
     rewards: torch.Tensor,
     done_mask: torch.Tensor,
     temperature: float,
     group_size: int,
-    apply_softmax: bool = True,
 ) -> torch.Tensor:
     """
     Compute the loss for the annealing.
@@ -80,14 +81,8 @@ def annealing_loss(
         The annealing loss, comparing the probability of the actions taken to the target probability
         computed from the rewards and temperature by Boltzmann distribution.
     """
-    batch_size, steps, num_actions = output.shape
+    batch_size, steps, num_actions = log_probs.shape
     num_groups = batch_size // group_size
-
-    # Transform output to log-probabilities
-    if apply_softmax:
-        log_probs = torch.log_softmax(output, dim=2)  # (batch_size, steps, num_actions)
-    else:
-        log_probs = torch.log(output)  # (batch_size, steps, num_actions)
 
     # Compute output and target log-ratio matrices of the selected action's probabilities (num_groups, group_size, group_size)
     output_log_prob_diffs = compute_output_log_prob_diffs(log_probs, actions, done_mask, group_size)

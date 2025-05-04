@@ -57,7 +57,8 @@ def test_gradient_direction_and_symmetry():
     rewards = torch.tensor([1.0, 0.0, 0.0, 1.0])  # Rewards: Group 1: [1, 0], Group 2: [0, 1] (reversed)
     done_mask = torch.tensor([[False], [False], [False], [False]])
 
-    loss = annealing_loss(output, actions, rewards, done_mask, 1.0, group_size)
+    log_probs = torch.log_softmax(output, dim=2)
+    loss = annealing_loss(log_probs, actions, rewards, done_mask, 1.0, group_size)
     loss.backward()
 
     assert output.grad is not None
@@ -87,7 +88,8 @@ def test_masking_and_unpicked_gradients():
     rewards = torch.tensor([1.0, 0.0])
     done_mask = torch.tensor([[False, True], [False, False]])  # Done Mask: Mask out step 1 of trajectory 0
 
-    loss = annealing_loss(softmax_output, actions, rewards, done_mask, 1.0, group_size, apply_softmax=False)
+    log_probs = torch.log(softmax_output)
+    loss = annealing_loss(log_probs, actions, rewards, done_mask, 1.0, group_size)
     softmax_output.retain_grad()
     loss.backward()
 
@@ -124,7 +126,8 @@ def test_zero_loss_for_perfect_match():
         requires_grad=True,
     )
 
-    loss = annealing_loss(output, actions, rewards, done_mask, temperature, group_size)
+    log_probs = torch.log_softmax(output, dim=2)
+    loss = annealing_loss(log_probs, actions, rewards, done_mask, temperature, group_size)
 
     # Loss should be close to zero
     assert torch.isclose(loss, torch.tensor(0.0), atol=1e-6)
