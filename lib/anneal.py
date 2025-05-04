@@ -107,7 +107,8 @@ def annealing_loss(
 
     # Compute the loss for each group
     loss = (log_prob_matrix - target_log_prob_matrix) ** 2  # (num_groups, group_size, group_size)
-    loss = torch.sum(loss) / 2.0  # ()
+    valid_values = num_groups * group_size * (group_size - 1)
+    loss = torch.sum(loss) / valid_values  # ()
 
     return loss
 

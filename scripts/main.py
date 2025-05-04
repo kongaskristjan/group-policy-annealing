@@ -1,3 +1,4 @@
+import math
 from argparse import ArgumentParser
 
 import torch
@@ -37,13 +38,13 @@ def main(
 
         observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
         temp = get_temperature(temp_start, temp_end, step / anneal_steps)
-        loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temp, group_size, optim_steps)[0]
+        loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temp, group_size, optim_steps)
 
         total_samples = step * batch_size
         ep_length = torch.mean(torch.sum(torch.logical_not(done_mask), dim=1, dtype=torch.float32))
-        print(
-            f"Annealing [{step}/{anneal_steps} ({total_samples} samples)]: reward - {torch.mean(rewards)}, eplength - {ep_length}, loss - {loss}, temperature - {temp}"
-        )
+        steps_formatted = f"[{step}/{anneal_steps} ({total_samples} samples)]"
+        stats_formatted = f"reward - {torch.mean(rewards):.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
+        print(f"Annealing {steps_formatted}: {stats_formatted}")
 
 
 def parse_args() -> tuple[str, int, float, float, float, int, bool, int, int, int, int, int]:
