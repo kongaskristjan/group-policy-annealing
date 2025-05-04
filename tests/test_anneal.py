@@ -28,6 +28,7 @@ def test_anneal_batch_episode_simple():
         done_mask=done_mask,
         optimizer=optimizer,
         temperature=1.0,  # Lower temperature makes the reward difference more significant
+        clip_eps=100.0,  # No clipping
         group_size=2,  # Trajectories are compared with each other and form 2 groups
         optim_steps=20,  # Lots of optimization to ensure convergence
     )
