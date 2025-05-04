@@ -14,6 +14,7 @@ def main(
     learning_rate: float,
     temperature: float,
     group_size: int,
+    enable_group_initialization: bool,
     batch_size: int,
     optim_steps: int,
     val_freq: int,
@@ -21,7 +22,7 @@ def main(
     render_freq: int,
 ) -> None:
 
-    envs = GroupedEnvironments(env_name, group_size, batch_size)
+    envs = GroupedEnvironments(env_name, group_size, batch_size, enable_group_initialization)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[32])
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -38,7 +39,7 @@ def main(
         print(f"Annealing [{step}/{anneal_steps} ({step * batch_size} samples)]: mean_reward - {torch.mean(rewards)}, loss - {loss}")
 
 
-def parse_args() -> tuple[str, int, float, float, int, int, int, int, int, int]:
+def parse_args() -> tuple[str, int, float, float, int, bool, int, int, int, int, int]:
     # fmt: off
     parser = ArgumentParser()
     parser.add_argument("--env_name", type=str, default="CartPole-v1", help="The name of the environment to run")
@@ -46,6 +47,7 @@ def parse_args() -> tuple[str, int, float, float, int, int, int, int, int, int]:
     parser.add_argument("--learning_rate", type=float, default=0.01, help="The learning rate for the optimizer")
     parser.add_argument("--temperature", type=float, default=0.5, help="The temperature of the annealing algorithm")
     parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
+    parser.add_argument("--disable_group_initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size.")
     parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
     parser.add_argument("--optim_steps", type=int, default=30, help="The number of optimization steps within each annealing step")
 
@@ -56,12 +58,15 @@ def parse_args() -> tuple[str, int, float, float, int, int, int, int, int, int]:
     args = parser.parse_args()
     # fmt: on
 
+    enable_group_initialization = not args.disable_group_initialization
+
     return (
         args.env_name,
         args.anneal_steps,
         args.learning_rate,
         args.temperature,
-        args.group_size,
+        args.group_size if enable_group_initialization else args.batch_size,
+        enable_group_initialization,
         args.batch_size,
         args.optim_steps,
         args.val_freq,

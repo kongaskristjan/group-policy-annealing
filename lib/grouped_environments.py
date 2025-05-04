@@ -12,7 +12,16 @@ class GroupedEnvironments:
     seeds within each group of size `group_size`. Rewards and dones are accumulated over the group.
     """
 
-    def __init__(self, env_name: str, group_size: int, batch_size: int, seed: int | None = None, max_steps: int | None = None, render: bool = False):
+    def __init__(
+        self,
+        env_name: str,
+        group_size: int,
+        batch_size: int,
+        enable_group_initialization: bool = True,
+        seed: int | None = None,
+        max_steps: int | None = None,
+        render: bool = False,
+    ):
         assert group_size > 0 and batch_size > 0, "Group size and batch size must be positive"
         assert batch_size % group_size == 0, "Batch size must be divisible by group size"
 
@@ -24,6 +33,7 @@ class GroupedEnvironments:
         self.group_size = group_size
         self.batch_size = batch_size
         self.rng = random.Random(seed)
+        self.enable_group_initialization = enable_group_initialization
 
         self.current_step = 0
         self.max_steps = max_steps
@@ -40,9 +50,11 @@ class GroupedEnvironments:
         self.done_masks: list[np.ndarray] = []
         self.current_step = 0
 
-        group_seeds = [self.rng.randint(0, 2**32 - 1) for _ in range(self.batch_size // self.group_size)]
-        group_seeds = [group_seeds[i // self.group_size] for i in range(self.batch_size)]
+        seeding_group_size = self.group_size if self.enable_group_initialization else 1
+        group_seeds = [self.rng.randint(0, 2**32 - 1) for _ in range(self.batch_size // seeding_group_size)]
+        group_seeds = [group_seeds[i // seeding_group_size] for i in range(self.batch_size)]
         obs, infos = self.envs.reset(seed=group_seeds)
+
         return self._transform_observation(obs)
 
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, bool]:
