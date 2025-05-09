@@ -73,13 +73,20 @@ class GroupedEnvironments:
 
         actions_np = actions.cpu().numpy()
         obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
+
+        # Rewards are added if the episode has not finished or if it just finished last step
+        if len(self.done_masks) == 0:
+            self.rewards += rewards
+        else:
+            self.rewards += rewards * np.logical_not(self.done_masks[-1])
+
+
         done_mask = np.logical_or(termination_mask, truncation_mask)
 
         if self.render:
             self.envs.render()
         if len(self.done_masks) > 0:
             done_mask = np.logical_or(done_mask, self.done_masks[-1])
-        self.rewards += rewards * np.logical_not(done_mask)
         self.done_masks.append(done_mask)
 
         done = bool(done_mask.all())
