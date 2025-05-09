@@ -80,7 +80,6 @@ class GroupedEnvironments:
         else:
             self.rewards += rewards * np.logical_not(self.done_masks[-1])
 
-
         done_mask = np.logical_or(termination_mask, truncation_mask)
 
         if self.render:

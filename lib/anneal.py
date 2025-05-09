@@ -5,6 +5,7 @@ import torch
 
 def anneal_batch_episode(
     model: torch.nn.Module,
+    baseline_model: torch.nn.Module,
     observations: torch.Tensor,
     actions: torch.Tensor,
     rewards: torch.Tensor,
@@ -47,7 +48,16 @@ def anneal_batch_episode(
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
 
-    initial_diffs = compute_output_log_prob_diffs(log_probs, actions, done_mask, group_size)
+        baseline_output = baseline_model(torch.reshape(observations, (batch_size * steps, num_observations)))
+        baseline_output = baseline_output.view(batch_size, steps, -1)
+        baseline_log_probs = torch.log_softmax(baseline_output, dim=2)
+
+        log_prob_diffs = log_probs - baseline_log_probs
+        print(f"log probs: {log_probs[0, 0, 0]}")
+        print(f"baseline log probs: {baseline_log_probs[0, 0, 0]}")
+        print(f"log prob diffs: {log_prob_diffs[0, 0, 0]}")
+
+    initial_diffs = compute_output_log_prob_diffs(log_prob_diffs, actions, done_mask, group_size)
     target_diffs = compute_target_log_prob_diffs(rewards, temperature, group_size)
     clipped_target_diffs = torch.clamp(target_diffs, initial_diffs - clip_eps, initial_diffs + clip_eps)
 
@@ -58,7 +68,9 @@ def anneal_batch_episode(
         output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
-        current_loss = annealing_loss(log_probs, actions, done_mask, clipped_target_diffs, group_size)
+        log_prob_diffs = log_probs - baseline_log_probs
+
+        current_loss = annealing_loss(log_prob_diffs, actions, done_mask, clipped_target_diffs, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
