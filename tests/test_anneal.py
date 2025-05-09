@@ -1,5 +1,3 @@
-import copy
-
 import torch
 
 from lib.anneal import anneal_batch_episode, annealing_loss, compute_target_log_prob_diffs
@@ -11,7 +9,6 @@ def test_anneal_batch_episode_simple():
     # One trajectory has reward 1.0, the other has reward 0.0
     # Set up a linear model with no hidden layers - note that the layer is initialized with zeros
     model = get_model(num_observations=1, num_actions=2, hidden=[])
-    baseline_model = copy.deepcopy(model)
 
     # Create observations, actions, rewards for 2 trajectories
     observations = torch.Tensor([[[-0.5]], [[0.5]]])  # 2 trajectories, 1 step, 1 observation
@@ -25,7 +22,6 @@ def test_anneal_batch_episode_simple():
     # Run annealing with lower temperature and more steps
     anneal_batch_episode(
         model=model,
-        baseline_model=baseline_model,
         observations=observations,
         actions=actions,
         rewards=rewards,
