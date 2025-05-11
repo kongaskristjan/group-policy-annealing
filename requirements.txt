@@ -3,3 +3,4 @@ pre-commit==4.2.0
 gymnasium[classic_control, box2d]==1.1.1
 numpy==2.2.5
 pydantic==2.11.4
+plotly==6.0.1
