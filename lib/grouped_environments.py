@@ -4,7 +4,6 @@ import warnings
 import gymnasium as gym
 import numpy as np
 import torch
-from gymnasium.core import ObsType
 
 
 class GroupedEnvironments:
@@ -27,8 +26,8 @@ class GroupedEnvironments:
         assert batch_size % group_size == 0, "Batch size must be divisible by group size"
 
         info_env = gym.make(env_name)
-        self.num_observations = info_env.observation_space.shape[0]
-        self.num_actions = info_env.action_space.n
+        self.num_observations = info_env.observation_space.shape[0]  # type: ignore
+        self.num_actions = info_env.action_space.n  # type: ignore
 
         self.env_name = env_name
         self.group_size = group_size
@@ -53,7 +52,7 @@ class GroupedEnvironments:
         seeding_group_size = self.group_size if self.enable_group_initialization else 1
         group_seeds = [self.rng.randint(0, 2**32 - 1) for _ in range(self.batch_size // seeding_group_size)]
         group_seeds = [group_seeds[i // seeding_group_size] for i in range(self.batch_size)]
-        obs, infos = self.envs.reset(seed=group_seeds)
+        obs, infos = self.envs.reset(seed=group_seeds)  # type: ignore
 
         return self._transform_observation(obs)
 
@@ -93,7 +92,7 @@ class GroupedEnvironments:
         done_masks = np.array(self.done_masks).T
         return torch.from_numpy(done_masks).to(torch.bool)
 
-    def _transform_observation(self, obs: ObsType) -> torch.Tensor:
+    def _transform_observation(self, obs: np.ndarray) -> torch.Tensor:
         """
         Returns the transformed observations for each environment in the batch.
         """
