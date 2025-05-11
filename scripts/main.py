@@ -56,7 +56,7 @@ def parse_args() -> tuple[str, int, float, float, float, float, int, bool, int, 
     parser.add_argument("--learning_rate", type=float, default=0.01, help="The learning rate for the optimizer")
     parser.add_argument("--temp_start", type=float, default=0.5, help="The initial temperature of the annealing algorithm")
     parser.add_argument("--temp_end", type=float, default=0.5, help="The final temperature of the annealing algorithm")
-    parser.add_argument("--clip_eps", type=float, default=1.0, help="The clipping epsilon for the policy")
+    parser.add_argument("--clip_eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
     parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
     parser.add_argument("--disable_group_initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size.")
     parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
