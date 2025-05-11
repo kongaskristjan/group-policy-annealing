@@ -13,7 +13,7 @@ def test_anneal_batch_episode_simple():
     # Create observations, actions, rewards for 2 trajectories
     observations = torch.Tensor([[[-0.5]], [[0.5]]])  # 2 trajectories, 1 step, 1 observation
     actions = torch.zeros(2, 1, dtype=torch.long)  # Both take action 0
-    rewards = torch.tensor([1.0, 0.0])  # First trajectory gets reward 1.0, second gets 0.0
+    rewards = torch.tensor([[1.0], [0.0]])  # First trajectory gets reward 1.0, second gets 0.0
     done_mask = torch.tensor([[False], [False]])  # Both trajectories are not done
 
     # Setup optimizer with higher learning rate

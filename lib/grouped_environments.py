@@ -10,7 +10,7 @@ from gymnasium.core import ObsType
 class GroupedEnvironments:
     """
     An environment grouping class of size `batch_size` that contains multiple environments that are reset with identical
-    seeds within each group of size `group_size`. Rewards and dones are accumulated over the group.
+    seeds within each group of size `group_size`. Dones are accumulated over the group.
     """
 
     def __init__(
@@ -45,9 +45,8 @@ class GroupedEnvironments:
 
     def reset(self) -> torch.Tensor:
         """
-        Resets the rewards and environments with identical seeds within each group.
+        Resets the environments with identical seeds within each group.
         """
-        self.rewards = np.zeros((self.batch_size,), dtype=np.float32)
         self.done_masks: list[np.ndarray] = []
         self.current_step = 0
 
@@ -58,7 +57,7 @@ class GroupedEnvironments:
 
         return self._transform_observation(obs)
 
-    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, bool]:
         """
         Steps the environments with the given actions and accumulates rewards.
         Returns the observations in torch format and a done mask.
@@ -68,17 +67,12 @@ class GroupedEnvironments:
 
         Returns:
             observations: Tensor of observations (batch_size, steps)
+            rewards: Tensor of rewards (batch_size, steps)
             done_mask: Tensor of done masks (batch_size, steps)
         """
 
         actions_np = actions.cpu().numpy()
         obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
-
-        # Rewards are added if the episode has not finished or if it just finished last step
-        if len(self.done_masks) == 0:
-            self.rewards += rewards
-        else:
-            self.rewards += rewards * np.logical_not(self.done_masks[-1])
 
         done_mask = np.logical_or(termination_mask, truncation_mask)
 
@@ -92,10 +86,7 @@ class GroupedEnvironments:
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
         self.current_step += 1
-        return self._transform_observation(obs), done
-
-    def get_rewards(self) -> torch.Tensor:
-        return torch.from_numpy(self.rewards).to(torch.float32)
+        return self._transform_observation(obs), self._transform_rewards(rewards, done_mask), done
 
     def get_done_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
@@ -117,3 +108,6 @@ class GroupedEnvironments:
             )
 
         return torch.from_numpy(obs).to(torch.float32)
+
+    def _transform_rewards(self, rewards: np.ndarray, done_mask: np.ndarray) -> torch.Tensor:
+        return torch.from_numpy(rewards * np.logical_not(done_mask)).to(torch.float32)

@@ -16,6 +16,7 @@ def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> t
         # Reset the environment to start a new episode
         actions: list[torch.Tensor] = []
         observations: list[torch.Tensor] = []
+        rewards: list[torch.Tensor] = []
 
         # Simulate the environment and policy as long as needed
         done = False
@@ -27,19 +28,20 @@ def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> t
             logits = model(cur_observations)  # (batch_size, num_actions)
             cur_probs = torch.nn.functional.softmax(logits, dim=1)  # (batch_size, num_actions)
             cur_actions = torch.multinomial(cur_probs, num_samples=1).squeeze(-1)  # (batch_size,)
-            cur_observations, done = envs.step(cur_actions)  # (batch_size, num_observations), bool
+            cur_observations, cur_rewards, done = envs.step(cur_actions)  # (batch_size, num_observations), (batch_size,), bool
 
             actions.append(cur_actions)
+            rewards.append(cur_rewards)
 
-        # Get the rewards and done mask from the environment
-        rewards = envs.get_rewards()  # (batch_size,)
+        # Get the done mask from the environment
         done_mask = envs.get_done_mask()  # (batch_size, steps)
 
-        # Transpose the actions and probs (steps, batch_size) -> (batch_size, steps)
+        # Transpose the rewards, actions and probs (steps, batch_size) -> (batch_size, steps)
         observations_t = torch.transpose(torch.stack(observations), 0, 1)  # (batch_size, steps, num_observations)
         actions_t = torch.transpose(torch.stack(actions), 0, 1)  # (batch_size, steps)
+        rewards_t = torch.transpose(torch.stack(rewards), 0, 1)  # (batch_size, steps)
 
-    return observations_t, actions_t, rewards, done_mask
+    return observations_t, actions_t, rewards_t, done_mask
 
 
 def validate(model: torch.nn.Module, env_name: str, val_batch: int) -> float:

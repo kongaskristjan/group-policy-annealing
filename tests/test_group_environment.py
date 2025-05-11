@@ -25,13 +25,15 @@ def test_done_and_reward_accumulation():
     # Test that done is False when the first step is taken
     env = GroupedEnvironments(env_name="CartPole-v1", group_size=1, batch_size=batch_size)
     input_actions = torch.zeros(batch_size, dtype=torch.int64)
-    obs, done = env.step(input_actions)
+    obs, rewards, done = env.step(input_actions)
     assert not done
 
     # Test that done is True when the last step is taken
     steps = 500
+    sum_rewards = torch.zeros(batch_size)
     for _ in range(steps + 1):
-        obs, done = env.step(input_actions)
+        obs, rewards, done = env.step(input_actions)
+        sum_rewards += rewards
     assert done
 
     # Test that done mask is False for all environments at the first step and True for all environments at the last step
@@ -40,9 +42,8 @@ def test_done_and_reward_accumulation():
     assert done_mask[:, steps].all()
 
     # Test that rewards are accumulated
-    rewards = env.get_rewards()
-    assert rewards.shape == (batch_size,)
+    assert sum_rewards.shape == (batch_size,)
 
     # Rewards should be between 2 and 20 (but they're normalized to be between 0 and 1)
-    assert (2 < rewards).all()
-    assert (rewards < 20).all()
+    assert (2 < sum_rewards).all()
+    assert (sum_rewards < 20).all()

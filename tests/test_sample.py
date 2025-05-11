@@ -19,7 +19,7 @@ def test_sample_batch_episode():
     steps = actions.shape[1]
     assert observations.shape == (batch_size, steps, envs.num_observations)
     assert actions.shape == (batch_size, steps)
-    assert rewards.shape == (batch_size,)
+    assert rewards.shape == (batch_size, steps)
     assert done_mask.shape == (batch_size, steps)
 
     # Check that actions are valid

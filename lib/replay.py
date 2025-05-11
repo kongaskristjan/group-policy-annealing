@@ -2,7 +2,7 @@ import torch
 
 
 class ReplayBuffer:
-    def __init__(self, buffer_size: int, group_size: int):
+    def __init__(self, buffer_size: int, group_size: int) -> None:
         assert buffer_size % group_size == 0, "Buffer size must be divisible by group size"
         self.buffer_size = buffer_size
         self.group_size = group_size
@@ -29,7 +29,7 @@ class ReplayBuffer:
         sample_indices: list[int] = []
         for i in group_indices:
             for j in range(self.group_size):
-                sample_indices.append(i * self.group_size + j)
+                sample_indices.append(i.item() * self.group_size + j)
 
         # Compute the maximum length of the samples
         max_len = 0
@@ -52,8 +52,8 @@ class ReplayBuffer:
         if len(add_to_tensor) > self.buffer_size:
             add_to_tensor = add_to_tensor[-self.buffer_size :]
 
-    def _sample_tensor(self, tensor: torch.Tensor, sample_indices: list[int], max_len: int) -> torch.Tensor:
-        sampled_tensor = torch.zeros(len(sample_indices), max_len, *tensor[0].shape)
+    def _sample_tensor(self, tensor: list[torch.Tensor], sample_indices: list[int], max_len: int) -> torch.Tensor:
+        sampled_tensor = torch.zeros(len(sample_indices), max_len, *tensor[0].shape[1:], dtype=tensor[0].dtype)
         for i, index in enumerate(sample_indices):
             sampled_tensor[i, : len(tensor[index])] = tensor[index]
         return sampled_tensor
