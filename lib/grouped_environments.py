@@ -9,7 +9,7 @@ import torch
 class GroupedEnvironments:
     """
     An environment grouping class of size `batch_size` that contains multiple environments that are reset with identical
-    seeds within each group of size `group_size`. Dones are accumulated over the group.
+    seeds within each group of size `group_size`. Valid masks are accumulated over the group.
     """
 
     def __init__(
@@ -46,7 +46,8 @@ class GroupedEnvironments:
         """
         Resets the environments with identical seeds within each group.
         """
-        self.done_masks: list[np.ndarray] = []
+        self.valid_masks: list[np.ndarray] = []
+        self.current_valid_mask = np.ones(self.batch_size, dtype=np.bool_)
         self.current_step = 0
 
         seeding_group_size = self.group_size if self.enable_group_initialization else 1
@@ -59,7 +60,7 @@ class GroupedEnvironments:
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, bool]:
         """
         Steps the environments with the given actions and accumulates rewards.
-        Returns the observations in torch format and a done mask.
+        Returns the observations in torch format and a valid mask.
 
         Args:
             actions: Tensor of actions (batch_size, steps)
@@ -67,31 +68,29 @@ class GroupedEnvironments:
         Returns:
             observations: Tensor of observations (batch_size, steps)
             rewards: Tensor of rewards (batch_size, steps)
-            done_mask: Tensor of done masks (batch_size, steps)
+            valid_mask: Tensor of valid masks (batch_size, steps)
         """
 
         actions_np = actions.cpu().numpy()
         obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
 
-        done_mask = np.logical_or(termination_mask, truncation_mask)
-        tfmd_rewards = self._transform_rewards(rewards, self.done_masks[-1] if len(self.done_masks) > 0 else np.zeros_like(done_mask))
+        self.valid_masks.append(self.current_valid_mask)
+        truncations = np.logical_or(termination_mask, truncation_mask)
+        self.current_valid_mask = np.logical_and(self.current_valid_mask, np.logical_not(truncations))
 
         if self.render:
             self.envs.render()
-        if len(self.done_masks) > 0:
-            done_mask = np.logical_or(done_mask, self.done_masks[-1])
-        self.done_masks.append(done_mask)
 
-        done = bool(done_mask.all())
+        done = not bool(self.current_valid_mask.any())
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
         self.current_step += 1
-        return self._transform_observation(obs), tfmd_rewards, done
+        return self._transform_observation(obs), self._transform_rewards(rewards, self.valid_masks[-1]), done
 
-    def get_done_mask(self) -> torch.Tensor:
+    def get_valid_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
-        done_masks = np.array(self.done_masks).T
-        return torch.from_numpy(done_masks).to(torch.bool)
+        valid_masks = np.array(self.valid_masks).T
+        return torch.from_numpy(valid_masks).to(torch.bool)
 
     def _transform_observation(self, obs: np.ndarray) -> torch.Tensor:
         """
@@ -109,5 +108,5 @@ class GroupedEnvironments:
 
         return torch.from_numpy(obs).to(torch.float32)
 
-    def _transform_rewards(self, rewards: np.ndarray, done_mask: np.ndarray) -> torch.Tensor:
-        return torch.from_numpy(rewards * np.logical_not(done_mask)).to(torch.float32)
+    def _transform_rewards(self, rewards: np.ndarray, valid_mask: np.ndarray) -> torch.Tensor:
+        return torch.from_numpy(rewards * valid_mask).to(torch.float32)

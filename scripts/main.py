@@ -46,14 +46,14 @@ def run_experiment(args: Namespace) -> list[float]:
 
         temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
 
-        observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
+        observations, actions, rewards, valid_mask = sample_batch_episode(model, envs)
         loss = anneal_batch_episode(
-            model, observations, actions, rewards, done_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
+            model, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
         )
 
         total_samples = step * len(observations)
-        mean_reward = torch.mean(torch.sum(rewards, dim=1))
-        ep_length = torch.mean(torch.sum(torch.logical_not(done_mask), dim=1, dtype=torch.float32))
+        mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
+        ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
         steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples)]"
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")

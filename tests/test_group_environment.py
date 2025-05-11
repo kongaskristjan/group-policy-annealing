@@ -19,7 +19,7 @@ def test_observation_seeding():
     assert not torch.allclose(obs[7], obs[0])
 
 
-def test_done_and_reward_accumulation():
+def test_valid_and_reward_accumulation():
     batch_size = 4
 
     # Test that done is False when the first step is taken
@@ -37,9 +37,9 @@ def test_done_and_reward_accumulation():
     assert done
 
     # Test that done mask is False for all environments at the first step and True for all environments at the last step
-    done_mask = env.get_done_mask()
-    assert torch.logical_not(done_mask[:, 0]).all()
-    assert done_mask[:, steps].all()
+    valid_mask = env.get_valid_mask()
+    assert valid_mask[:, 0].all()
+    assert torch.logical_not(valid_mask[:, steps].all())
 
     # Test that rewards are accumulated
     assert sum_rewards.shape == (batch_size,)
