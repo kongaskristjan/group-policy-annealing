@@ -12,7 +12,6 @@ import torch
 from lib.anneal import anneal_batch_episode, get_temperature
 from lib.grouped_environments import GroupedEnvironments
 from lib.model import get_model
-from lib.replay import ReplayBuffer
 from lib.sample import render_episode, sample_batch_episode, validate
 from lib.tracking import save_run
 
@@ -32,8 +31,7 @@ def main(args: Namespace) -> None:
 
 
 def run_experiment(args: Namespace) -> list[float]:
-    envs = GroupedEnvironments(args.env_name, args.group_size, args.env_batch_size, not args.disable_group_initialization)
-    replay_buffer = ReplayBuffer(args.replay_buffer_size, args.group_size)
+    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[32])
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
@@ -48,18 +46,16 @@ def run_experiment(args: Namespace) -> list[float]:
 
         temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
 
-        new_observations, new_actions, new_rewards, new_done_mask = sample_batch_episode(model, envs)
-        replay_buffer.add(new_observations, new_actions, new_rewards, new_done_mask)
-        observations, actions, rewards, done_mask = replay_buffer.sample(args.training_batch_size)
+        observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
         loss = anneal_batch_episode(
             model, observations, actions, rewards, done_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
         )
 
-        total_samples = step * len(new_observations)
-        mean_reward = torch.mean(torch.sum(new_rewards, dim=1))
-        new_ep_length = torch.mean(torch.sum(torch.logical_not(new_done_mask), dim=1, dtype=torch.float32))
+        total_samples = step * len(observations)
+        mean_reward = torch.mean(torch.sum(rewards, dim=1))
+        ep_length = torch.mean(torch.sum(torch.logical_not(done_mask), dim=1, dtype=torch.float32))
         steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples)]"
-        stats_formatted = f"reward - {mean_reward:.2f}, eplength - {new_ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
+        stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
 
@@ -77,9 +73,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--clip_eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
     parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
     parser.add_argument("--disable_group_initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size.")
-    parser.add_argument("--env_batch_size", type=int, default=32, help="Total number of environments to run in parallel (env_batch_size = group_size * (number of groups))")
-    parser.add_argument("--training_batch_size", type=int, default=32, help="The number of environments to sample from the replay buffer at a time")
-    parser.add_argument("--replay_buffer_size", type=int, default=32, help="The size of the replay buffer (must be divisible by group_size)")
+    parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
     parser.add_argument("--optim_steps", type=int, default=30, help="The number of optimization steps within each annealing step")
 
     # Validation arguments
