@@ -42,7 +42,7 @@ def anneal_batch_episode(
     rewards = rewards.to(device)
     done_mask = done_mask.to(device)
 
-    rewards = torch.sum(rewards, dim=1)  # (batch_size,)
+    rewards = torch.sum(rewards * torch.logical_not(done_mask), dim=1)  # (batch_size,)
 
     with torch.no_grad():
         output = model(torch.reshape(observations, (batch_size * steps, num_observations)))

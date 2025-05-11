@@ -9,7 +9,7 @@ def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> t
     Returns:
         - observations: Tensor of observations (batch_size, steps, num_observations)
         - actions: Tensor of sampled actions (batch_size, steps)
-        - rewards: Tensor of rewards from the environment (batch_size,)
+        - rewards: Tensor of rewards from the environment (batch_size, steps)
         - done_mask: Tensor of done masks (batch_size, steps)
     """
     with torch.no_grad():

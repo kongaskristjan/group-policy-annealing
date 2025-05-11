@@ -74,6 +74,7 @@ class GroupedEnvironments:
         obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
 
         done_mask = np.logical_or(termination_mask, truncation_mask)
+        tfmd_rewards = self._transform_rewards(rewards, done_mask)
 
         if self.render:
             self.envs.render()
@@ -85,7 +86,7 @@ class GroupedEnvironments:
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
         self.current_step += 1
-        return self._transform_observation(obs), self._transform_rewards(rewards, done_mask), done
+        return self._transform_observation(obs), tfmd_rewards, done
 
     def get_done_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
