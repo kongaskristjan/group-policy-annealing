@@ -7,13 +7,23 @@ from lib.anneal import anneal_batch_episode, get_temperature
 from lib.grouped_environments import GroupedEnvironments
 from lib.model import get_model
 from lib.sample import render_episode, sample_batch_episode, validate
+from lib.tracking import save_run
 
 
 def main(args: Namespace) -> None:
+    all_step_rewards: list[list[float]] = []
+    for _ in range(args.num_runs):
+        step_rewards = run_experiment(args)
+        all_step_rewards.append(step_rewards)
+    save_run(args, all_step_rewards)
+
+
+def run_experiment(args: Namespace) -> list[float]:
     envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[32])
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
+    step_rewards: list[float] = []
     for step in range(args.anneal_steps):
         if args.render_freq > 0 and step % args.render_freq == 0:
             render_episode(model, args.env_name)
@@ -33,7 +43,9 @@ def main(args: Namespace) -> None:
         steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples)]"
         stats_formatted = f"reward - {torch.mean(rewards):.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
+        step_rewards.append(torch.mean(rewards))
 
+    return step_rewards
 
 def parse_args() -> Namespace:
     # fmt: off
