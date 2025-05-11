@@ -74,7 +74,7 @@ class GroupedEnvironments:
         obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
 
         done_mask = np.logical_or(termination_mask, truncation_mask)
-        tfmd_rewards = self._transform_rewards(rewards, done_mask)
+        tfmd_rewards = self._transform_rewards(rewards, self.done_masks[-1] if len(self.done_masks) > 0 else np.zeros_like(done_mask))
 
         if self.render:
             self.envs.render()

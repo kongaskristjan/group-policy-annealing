@@ -44,6 +44,6 @@ def test_done_and_reward_accumulation():
     # Test that rewards are accumulated
     assert sum_rewards.shape == (batch_size,)
 
-    # Rewards should be between 2 and 20 (but they're normalized to be between 0 and 1)
+    # Rewards should be between 2 and 20
     assert (2 < sum_rewards).all()
     assert (sum_rewards < 20).all()
