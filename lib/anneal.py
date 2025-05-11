@@ -47,9 +47,11 @@ def anneal_batch_episode(
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
 
-    initial_diffs = compute_output_log_prob_diffs(log_probs, actions, done_mask, group_size)
-    target_diffs = compute_target_log_prob_diffs(rewards, temperature, group_size)
-    clipped_target_diffs = torch.clamp(target_diffs, initial_diffs - clip_eps, initial_diffs + clip_eps)
+    initial_log_probs = compute_output_log_probs(log_probs, actions, done_mask, group_size)
+    target_log_probs = compute_target_log_probs(rewards, temperature, group_size)
+    centered_target_log_probs = target_log_probs - torch.mean(target_log_probs, dim=1, keepdim=True)
+    centered_initial_log_probs = initial_log_probs - torch.mean(initial_log_probs, dim=1, keepdim=True)
+    clipped_target_log_probs = torch.clamp(centered_target_log_probs, centered_initial_log_probs - clip_eps, centered_initial_log_probs + clip_eps)
 
     # Training loop
     losses = []
@@ -58,7 +60,7 @@ def anneal_batch_episode(
         output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
-        current_loss = annealing_loss(log_probs, actions, done_mask, clipped_target_diffs, group_size)
+        current_loss = annealing_loss(log_probs, actions, done_mask, clipped_target_log_probs, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
@@ -70,7 +72,7 @@ def annealing_loss(
     log_probs: torch.Tensor,
     actions: torch.Tensor,
     done_mask: torch.Tensor,
-    target_diffs: torch.Tensor,
+    target_log_probs: torch.Tensor,
     group_size: int,
 ) -> torch.Tensor:
     """
@@ -91,18 +93,23 @@ def annealing_loss(
     batch_size, steps, num_actions = log_probs.shape
     num_groups = batch_size // group_size
 
-    # Compute output and target log-ratio matrices of the selected action's probabilities (num_groups, group_size, group_size)
-    output_log_prob_diffs = compute_output_log_prob_diffs(log_probs, actions, done_mask, group_size)
+    # Compute output and target log-probabilities (num_groups, group_size)
+    output_log_probs = compute_output_log_probs(log_probs, actions, done_mask, group_size)
+
+    # Boltzmann distribution only applies to probability ratios (or log probability differences),
+    # thus we need to center the probability differences around 0 within each group
+    log_prob_delta = output_log_probs - target_log_probs
+    centered_log_prob_delta = log_prob_delta - torch.mean(log_prob_delta, dim=1, keepdim=True)
 
     # Compute the loss based on output and target differences
-    loss = (output_log_prob_diffs - target_diffs) ** 2  # (num_groups, group_size, group_size)
-    valid_values = num_groups * group_size * (group_size - 1)
+    loss = centered_log_prob_delta**2  # (num_groups, group_size)
+    valid_values = num_groups * group_size
     loss = torch.sum(loss) / valid_values  # ()
 
     return loss
 
 
-def compute_output_log_prob_diffs(log_probs: torch.Tensor, actions: torch.Tensor, done_mask: torch.Tensor, group_size: int) -> torch.Tensor:
+def compute_output_log_probs(log_probs: torch.Tensor, actions: torch.Tensor, done_mask: torch.Tensor, group_size: int) -> torch.Tensor:
     batch_size, steps, num_actions = log_probs.shape
     num_groups = batch_size // group_size
 
@@ -119,22 +126,19 @@ def compute_output_log_prob_diffs(log_probs: torch.Tensor, actions: torch.Tensor
 
     # Compute the log-ratio matrix of the selected action's probabilities (num_groups, group_size, group_size)
     sum_log_probs = torch.sum(selected_log_probs, dim=2)  # (num_groups, group_size)
-    log_prob_diffs = sum_log_probs.unsqueeze(1) - sum_log_probs.unsqueeze(2)  # (num_groups, group_size, group_size)
 
-    return log_prob_diffs
+    return sum_log_probs
 
 
-def compute_target_log_prob_diffs(rewards: torch.Tensor, temperature: float, group_size: int) -> torch.Tensor:
-    num_groups = rewards.shape[0] // group_size
-
+def compute_target_log_probs(rewards: torch.Tensor, temperature: float, group_size: int) -> torch.Tensor:
     # Group based view
+    num_groups = rewards.shape[0] // group_size
     rewards = rewards.view(num_groups, group_size)
 
-    # Compute the target log-ratio matrix of the selected action's probabilities (num_groups, group_size, group_size)
-    reward_diffs = rewards.unsqueeze(1) - rewards.unsqueeze(2)  # (num_groups, group_size, group_size)
-    target_log_prob_diffs = reward_diffs / temperature  # (num_groups, group_size, group_size)
+    # Compute the target log-ratios of the selected action's probabilities (num_groups, group_size)
+    target_log_probs = rewards / temperature  # (num_groups, group_size)
 
-    return target_log_prob_diffs
+    return target_log_probs
 
 
 def get_temperature(temp_start: float, temp_end: float, progress: float) -> float:
