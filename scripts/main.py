@@ -1,5 +1,5 @@
 import math
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 
 import torch
 
@@ -9,46 +9,33 @@ from lib.model import get_model
 from lib.sample import render_episode, sample_batch_episode, validate
 
 
-def main(
-    env_name: str,
-    anneal_steps: int,
-    learning_rate: float,
-    temp_start: float,
-    temp_end: float,
-    clip_eps: float,
-    group_size: int,
-    enable_group_initialization: bool,
-    batch_size: int,
-    optim_steps: int,
-    val_freq: int,
-    val_batch: int,
-    render_freq: int,
-) -> None:
-
-    envs = GroupedEnvironments(env_name, group_size, batch_size, enable_group_initialization)
+def main(args: Namespace) -> None:
+    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[32])
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    for step in range(anneal_steps):
-        if render_freq > 0 and step % render_freq == 0:
-            render_episode(model, env_name)
+    for step in range(args.anneal_steps):
+        if args.render_freq > 0 and step % args.render_freq == 0:
+            render_episode(model, args.env_name)
 
-        if val_freq > 0 and step % val_freq == 0:
-            val_reward = validate(model, env_name, val_batch)
-            print(f"Validation [{step} ({step * batch_size} samples)]: mean_reward - {val_reward:.2f}")
+        if args.val_freq > 0 and step % args.val_freq == 0:
+            val_reward = validate(model, args.env_name, args.val_batch)
+            print(f"Validation [{step} ({step * args.batch_size} samples)]: mean_reward - {val_reward:.2f}")
 
         observations, actions, rewards, done_mask = sample_batch_episode(model, envs)
-        temp = get_temperature(temp_start, temp_end, step / anneal_steps)
-        loss = anneal_batch_episode(model, observations, actions, rewards, done_mask, optimizer, temp, clip_eps, group_size, optim_steps)
+        temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
+        loss = anneal_batch_episode(
+            model, observations, actions, rewards, done_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
+        )
 
-        total_samples = step * batch_size
+        total_samples = step * args.batch_size
         ep_length = torch.mean(torch.sum(torch.logical_not(done_mask), dim=1, dtype=torch.float32))
-        steps_formatted = f"[{step}/{anneal_steps} ({total_samples} samples)]"
+        steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples)]"
         stats_formatted = f"reward - {torch.mean(rewards):.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
 
 
-def parse_args() -> tuple[str, int, float, float, float, float, int, bool, int, int, int, int, int]:
+def parse_args() -> Namespace:
     # fmt: off
     parser = ArgumentParser()
     parser.add_argument("--env_name", type=str, default="CartPole-v1", help="The name of the environment to run")
@@ -69,24 +56,8 @@ def parse_args() -> tuple[str, int, float, float, float, float, int, bool, int, 
     args = parser.parse_args()
     # fmt: on
 
-    enable_group_initialization = not args.disable_group_initialization
-
-    return (
-        args.env_name,
-        args.anneal_steps,
-        args.learning_rate,
-        args.temp_start,
-        args.temp_end,
-        args.clip_eps,
-        args.group_size if enable_group_initialization else args.batch_size,
-        enable_group_initialization,
-        args.batch_size,
-        args.optim_steps,
-        args.val_freq,
-        args.val_batch,
-        args.render_freq,
-    )
+    return args
 
 
 if __name__ == "__main__":
-    main(*parse_args())
+    main(parse_args())
