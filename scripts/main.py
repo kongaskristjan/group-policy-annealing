@@ -1,5 +1,7 @@
 import math
 from argparse import ArgumentParser, Namespace
+from datetime import datetime
+from pathlib import Path
 
 import torch
 
@@ -11,11 +13,17 @@ from lib.tracking import save_run
 
 
 def main(args: Namespace) -> None:
+    timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
+    run_path = Path("runs") / timestamp / "experiment.json"
+
     all_step_rewards: list[list[float]] = []
     for _ in range(args.num_runs):
+        print()
+        print(f"Running experiment {_ + 1} of {args.num_runs}:")
         step_rewards = run_experiment(args)
         all_step_rewards.append(step_rewards)
-    save_run(args, all_step_rewards)
+
+    save_run(run_path, args, all_step_rewards)
 
 
 def run_experiment(args: Namespace) -> list[float]:
@@ -47,6 +55,7 @@ def run_experiment(args: Namespace) -> list[float]:
 
     return step_rewards
 
+
 def parse_args() -> Namespace:
     # fmt: off
     parser = ArgumentParser()
@@ -65,6 +74,9 @@ def parse_args() -> Namespace:
     parser.add_argument("--val_freq", type=int, default=0, help="Frequency of validation in terms of annealing steps (0 to disable)")
     parser.add_argument("--val_batch", type=int, default=32, help="Number of environments to run during validation")
     parser.add_argument("--render_freq", type=int, default=0, help="Frequency of rendering in terms of annealing steps (0 to disable)")
+
+    # Experiment arguments
+    parser.add_argument("--num_runs", type=int, default=1, help="Number of experiment runs to perform")
     args = parser.parse_args()
     # fmt: on
 
