@@ -10,6 +10,9 @@ def main(args: Namespace) -> None:
     print(f"Plotting a total of {len(runs)} experiment runs:")
     for i, run in enumerate(runs):
         print(f"Experiment {i + 1}:")
+        for key, value in run.git_info.items():
+            print(f"  - {key}: {value}")
+        print()
         for key, value in run.parameters.items():
             print(f"  - {key}: {value}")
         print()

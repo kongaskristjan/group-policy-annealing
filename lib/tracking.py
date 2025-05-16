@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from argparse import Namespace
 from pathlib import Path
 from typing import Any
@@ -13,11 +14,12 @@ from pydantic import BaseModel
 class ExperimentRun(BaseModel):
     """Model for storing experiment run data."""
 
+    git_info: dict[str, Any]
     parameters: dict[str, Any]
     rewards: list[list[float]]
 
 
-def save_run(run_path: Path, args: Namespace, rewards: list[list[float]]) -> None:
+def save_run(run_path: Path, args: Namespace, git_info: dict[str, Any], rewards: list[list[float]]) -> None:
     """
     Save experiment run data to a JSON file.
 
@@ -27,9 +29,20 @@ def save_run(run_path: Path, args: Namespace, rewards: list[list[float]]) -> Non
         rewards: List of reward trajectories from multiple runs
     """
     params = vars(args)
-    run = ExperimentRun(parameters=params, rewards=rewards)
+    run = ExperimentRun(git_info=git_info, parameters=params, rewards=rewards)
     os.makedirs(run_path.parent, exist_ok=True)
     run_path.write_text(run.model_dump_json(indent=2))
+
+
+def get_git_info() -> dict[str, Any]:
+    """Get git information."""
+    return {
+        "commit": subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip(),
+        "commit-dirty": subprocess.check_output(["git", "status", "--porcelain"]).decode("utf-8").strip(),
+        "commit-message": subprocess.check_output(["git", "log", "-1", "--pretty=%B"]).decode("utf-8").strip(),
+        "commit-date": subprocess.check_output(["git", "log", "-1", "--pretty=%ad"]).decode("utf-8").strip(),
+        "branch": subprocess.check_output(["git", "branch", "--show-current"]).decode("utf-8").strip(),
+    }
 
 
 def load_run(run_path: Path) -> ExperimentRun:

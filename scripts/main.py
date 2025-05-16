@@ -13,11 +13,12 @@ from lib.anneal import anneal_batch_episode, get_temperature
 from lib.grouped_environments import GroupedEnvironments
 from lib.model import get_model
 from lib.sample import render_episode, sample_batch_episode, validate
-from lib.tracking import save_run
+from lib.tracking import get_git_info, save_run
 
 
 def main(args: Namespace) -> None:
     timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
+    git_info = get_git_info()
     run_path = Path(__file__).parent.parent / "runs" / timestamp / "experiment.json"
 
     all_step_rewards: list[list[float]] = []
@@ -27,7 +28,7 @@ def main(args: Namespace) -> None:
         all_step_rewards.append(step_rewards)
         print()
 
-    save_run(run_path, args, all_step_rewards)
+    save_run(run_path, args, git_info, all_step_rewards)
 
 
 def run_experiment(args: Namespace) -> list[float]:
