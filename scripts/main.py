@@ -9,9 +9,9 @@ from datetime import datetime
 
 import torch
 
-from lib.anneal import anneal_batch_episode, get_temperature
+from lib.grouped_anneal import anneal_group_batch_episode
 from lib.grouped_environments import GroupedEnvironments
-from lib.model import get_model
+from lib.model import get_model, get_temperature
 from lib.sample import render_episode, sample_batch_episode, validate
 from lib.tracking import get_git_info, save_run
 
@@ -33,23 +33,23 @@ def main(args: Namespace) -> None:
 
 def run_experiment(args: Namespace) -> list[float]:
     envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization)
-    model = get_model(envs.num_observations, envs.num_actions, hidden=[32])
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    policy = get_model(envs.num_observations, envs.num_actions, hidden=[32])
+    optimizer = torch.optim.Adam(policy.parameters(), lr=args.learning_rate)
 
     step_rewards: list[float] = []
     for step in range(args.anneal_steps):
         if args.render_freq > 0 and step % args.render_freq == 0:
-            render_episode(model, args.env_name)
+            render_episode(policy, args.env_name)
 
         if args.val_freq > 0 and step % args.val_freq == 0:
-            val_reward = validate(model, args.env_name, args.val_batch)
+            val_reward = validate(policy, args.env_name, args.val_batch)
             print(f"Validation [{step} ({step * args.env_batch_size} samples)]: mean_reward - {val_reward:.2f}")
 
         temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
 
-        observations, actions, rewards, valid_mask = sample_batch_episode(model, envs)
-        loss = anneal_batch_episode(
-            model, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
+        observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
+        loss = anneal_group_batch_episode(
+            policy, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
         )
 
         total_samples = step * len(observations)

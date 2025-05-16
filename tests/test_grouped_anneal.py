@@ -1,6 +1,6 @@
 import torch
 
-from lib.anneal import anneal_batch_episode, annealing_loss, compute_target_log_probs
+from lib.grouped_anneal import anneal_group_batch_episode, annealing_group_batch_loss, compute_target_log_probs
 from lib.model import get_model
 
 
@@ -8,7 +8,7 @@ def test_anneal_batch_episode_simple():
     # Create a simple test with 2 trajectories of length 1
     # One trajectory has reward 1.0, the other has reward 0.0
     # Set up a linear model with no hidden layers - note that the layer is initialized with zeros
-    model = get_model(num_observations=1, num_actions=2, hidden=[])
+    policy = get_model(num_observations=1, num_actions=2, hidden=[])
 
     # Create observations, actions, rewards for 2 trajectories
     observations = torch.Tensor([[[-0.5]], [[0.5]]])  # 2 trajectories, 1 step, 1 observation
@@ -17,11 +17,11 @@ def test_anneal_batch_episode_simple():
     valid_mask = torch.tensor([[True], [True]])  # Both trajectories are valid
 
     # Setup optimizer with higher learning rate
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
+    optimizer = torch.optim.Adam(policy.parameters(), lr=0.05)
 
     # Run annealing with lower temperature and more steps
-    anneal_batch_episode(
-        model=model,
+    anneal_group_batch_episode(
+        policy=policy,
         observations=observations,
         actions=actions,
         rewards=rewards,
@@ -35,7 +35,7 @@ def test_anneal_batch_episode_simple():
 
     # Get probabilities after annealing
     with torch.no_grad():
-        logits = model(observations.view(2, 1))
+        logits = policy(observations.view(2, 1))
         probs = torch.softmax(logits, dim=1)
 
         # Probability of action 0 for trajectory with reward 1.0
@@ -59,7 +59,7 @@ def test_gradient_direction_and_symmetry():
 
     target_log_probs = compute_target_log_probs(rewards, 1.0, group_size)
     log_probs = torch.log_softmax(output, dim=2)
-    loss = annealing_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
+    loss = annealing_group_batch_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
     loss.backward()
 
     assert output.grad is not None
@@ -91,7 +91,7 @@ def test_masking_and_unpicked_gradients():
 
     target_log_probs = compute_target_log_probs(rewards, 1.0, group_size)
     log_probs = torch.log(softmax_output)
-    loss = annealing_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
+    loss = annealing_group_batch_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
     softmax_output.retain_grad()
     loss.backward()
 
@@ -130,7 +130,7 @@ def test_zero_loss_for_perfect_match():
 
     target_log_probs = compute_target_log_probs(rewards, temperature, group_size)
     log_probs = torch.log_softmax(output, dim=2)
-    loss = annealing_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
+    loss = annealing_group_batch_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
 
     # Loss should be close to zero
     assert torch.isclose(loss, torch.tensor(0.0), atol=1e-6)

@@ -3,9 +3,9 @@ import torch
 from lib.grouped_environments import GroupedEnvironments
 
 
-def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def sample_batch_episode(policy: torch.nn.Module, envs: GroupedEnvironments) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Sample actions from the model in the given environment.
+    Sample actions from the policy model in the given environment.
     Returns:
         - observations: Tensor of observations (batch_size, steps, num_observations)
         - actions: Tensor of sampled actions (batch_size, steps)
@@ -25,7 +25,7 @@ def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> t
             observations.append(cur_observations)
 
             # Sample an action from the model
-            logits = model(cur_observations)  # (batch_size, num_actions)
+            logits = policy(cur_observations)  # (batch_size, num_actions)
             cur_probs = torch.nn.functional.softmax(logits, dim=1)  # (batch_size, num_actions)
             cur_actions = torch.multinomial(cur_probs, num_samples=1).squeeze(-1)  # (batch_size,)
             cur_observations, cur_rewards, done = envs.step(cur_actions)  # (batch_size, num_observations), (batch_size), bool
@@ -44,14 +44,14 @@ def sample_batch_episode(model: torch.nn.Module, envs: GroupedEnvironments) -> t
     return observations_t, actions_t, rewards_t, valid_mask
 
 
-def validate(model: torch.nn.Module, env_name: str, val_batch: int) -> float:
+def validate(policy: torch.nn.Module, env_name: str, val_batch: int) -> float:
     """Run validation episodes and return the mean reward"""
     val_envs = GroupedEnvironments(env_name, 1, val_batch)
-    observations, actions, rewards, valid_mask = sample_batch_episode(model, val_envs)
+    observations, actions, rewards, valid_mask = sample_batch_episode(policy, val_envs)
     return torch.mean(torch.sum(rewards * valid_mask, dim=1)).item()
 
 
-def render_episode(model: torch.nn.Module, env_name: str) -> None:
-    """Render a single episode of the model in the given environment"""
+def render_episode(policy: torch.nn.Module, env_name: str) -> None:
+    """Render a single episode of the policy model in the given environment"""
     val_envs = GroupedEnvironments(env_name, 1, 1, render=True)
-    observations, actions, rewards, valid_mask = sample_batch_episode(model, val_envs)
+    observations, actions, rewards, valid_mask = sample_batch_episode(policy, val_envs)

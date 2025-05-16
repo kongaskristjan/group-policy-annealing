@@ -3,8 +3,8 @@ import math
 import torch
 
 
-def anneal_batch_episode(
-    model: torch.nn.Module,
+def anneal_group_batch_episode(
+    policy: torch.nn.Module,
     observations: torch.Tensor,
     actions: torch.Tensor,
     rewards: torch.Tensor,
@@ -16,12 +16,12 @@ def anneal_batch_episode(
     optim_steps: int,
 ) -> list[float]:
     """
-    Anneal the model with a batch of episodes.
+    Anneal the policy model with a batch of episodes.
 
     Args:
-        model: The model to anneal
+        policy: The policy model to anneal
         observations: Tensor of observations (batch_size, steps, num_observations)
-        actions: Tensor of actions the model took (batch_size, steps)
+        actions: Tensor of actions the policy model took (batch_size, steps)
         rewards: Tensor of rewards (batch_size,)
         valid_mask: Tensor of valid masks (batch_size, steps)
         optimizer: The optimizer to use for the annealing.
@@ -33,8 +33,8 @@ def anneal_batch_episode(
     Returns:
         The loss during each step of the annealing.
     """
-    device = next(model.parameters()).device
-    assert all(p.device == device for p in model.parameters())  # Check that all parameters are on the same device
+    device = next(policy.parameters()).device
+    assert all(p.device == device for p in policy.parameters())  # Check that all parameters are on the same device
 
     batch_size, steps, num_observations = observations.shape
     observations = observations.to(device)
@@ -45,7 +45,7 @@ def anneal_batch_episode(
     rewards = torch.sum(rewards * valid_mask, dim=1)  # (batch_size,)
 
     with torch.no_grad():
-        output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
+        output = policy(torch.reshape(observations, (batch_size * steps, num_observations)))
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
 
@@ -59,10 +59,10 @@ def anneal_batch_episode(
     losses = []
     for _ in range(optim_steps):
         optimizer.zero_grad()
-        output = model(torch.reshape(observations, (batch_size * steps, num_observations)))
+        output = policy(torch.reshape(observations, (batch_size * steps, num_observations)))
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
-        current_loss = annealing_loss(log_probs, actions, valid_mask, clipped_target_log_probs, group_size)
+        current_loss = annealing_group_batch_loss(log_probs, actions, valid_mask, clipped_target_log_probs, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
@@ -70,7 +70,7 @@ def anneal_batch_episode(
     return losses
 
 
-def annealing_loss(
+def annealing_group_batch_loss(
     log_probs: torch.Tensor,
     actions: torch.Tensor,
     valid_mask: torch.Tensor,
@@ -78,7 +78,7 @@ def annealing_loss(
     group_size: int,
 ) -> torch.Tensor:
     """
-    Compute the loss for the annealing.
+    Compute the loss for grouped batch of episodes for the annealing.
 
     Args:
         log_probs: The log probabilities of the actions (batch_size, steps, num_actions)
@@ -126,7 +126,7 @@ def compute_output_log_probs(log_probs: torch.Tensor, actions: torch.Tensor, val
     # Assign the equivalent of random actions with equal probability to the actions after the episode is done
     selected_log_probs = selected_log_probs.masked_fill(torch.logical_not(valid_mask), math.log(1 / num_actions))
 
-    # Compute the log-ratio matrix of the selected action's probabilities (num_groups, group_size, group_size)
+    # Compute the logarithm of total probability of the selected action's (computed as sum of log probabilities) (num_groups, group_size)
     sum_log_probs = torch.sum(selected_log_probs, dim=2)  # (num_groups, group_size)
 
     return sum_log_probs
@@ -141,18 +141,3 @@ def compute_target_log_probs(rewards: torch.Tensor, temperature: float, group_si
     target_log_probs = rewards / temperature  # (num_groups, group_size)
 
     return target_log_probs
-
-
-def get_temperature(temp_start: float, temp_end: float, progress: float) -> float:
-    """
-    Exponential temperature annealing schedule.
-
-    Args:
-        temp_start: The initial temperature
-        temp_end: The final temperature
-        progress: The progress of the annealing (0 to 1)
-
-    Returns:
-        The temperature
-    """
-    return temp_start * (temp_end / temp_start) ** progress
