@@ -3,7 +3,7 @@ import math
 import torch
 
 
-def anneal_group_batch_episode(
+def anneal_grouped(
     policy: torch.nn.Module,
     observations: torch.Tensor,
     actions: torch.Tensor,
@@ -22,7 +22,7 @@ def anneal_group_batch_episode(
         policy: The policy model to anneal
         observations: Tensor of observations (batch_size, steps, num_observations)
         actions: Tensor of actions the policy model took (batch_size, steps)
-        rewards: Tensor of rewards (batch_size,)
+        rewards: Tensor of rewards (batch_size, steps)
         valid_mask: Tensor of valid masks (batch_size, steps)
         optimizer: The optimizer to use for the annealing.
         temperature: The temperature to use for the annealing.
@@ -49,8 +49,8 @@ def anneal_group_batch_episode(
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
 
-    initial_log_probs = compute_output_log_probs(log_probs, actions, valid_mask, group_size)
-    target_log_probs = compute_target_log_probs(rewards, temperature, group_size)
+    initial_log_probs = _compute_output_log_probs(log_probs, actions, valid_mask, group_size)
+    target_log_probs = _compute_target_log_probs(rewards, temperature, group_size)
     centered_target_log_probs = target_log_probs - torch.mean(target_log_probs, dim=1, keepdim=True)
     centered_initial_log_probs = initial_log_probs - torch.mean(initial_log_probs, dim=1, keepdim=True)
     clipped_target_log_probs = torch.clamp(centered_target_log_probs, centered_initial_log_probs - clip_eps, centered_initial_log_probs + clip_eps)
@@ -62,7 +62,7 @@ def anneal_group_batch_episode(
         output = policy(torch.reshape(observations, (batch_size * steps, num_observations)))
         output = output.view(batch_size, steps, -1)
         log_probs = torch.log_softmax(output, dim=2)
-        current_loss = annealing_group_batch_loss(log_probs, actions, valid_mask, clipped_target_log_probs, group_size)
+        current_loss = grouped_loss(log_probs, actions, valid_mask, clipped_target_log_probs, group_size)
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
@@ -70,7 +70,7 @@ def anneal_group_batch_episode(
     return losses
 
 
-def annealing_group_batch_loss(
+def grouped_loss(
     log_probs: torch.Tensor,
     actions: torch.Tensor,
     valid_mask: torch.Tensor,
@@ -96,7 +96,7 @@ def annealing_group_batch_loss(
     num_groups = batch_size // group_size
 
     # Compute output and target log-probabilities (num_groups, group_size)
-    output_log_probs = compute_output_log_probs(log_probs, actions, valid_mask, group_size)
+    output_log_probs = _compute_output_log_probs(log_probs, actions, valid_mask, group_size)
 
     # Boltzmann distribution only applies to probability ratios (or log probability differences),
     # thus we need to center the probability differences around 0 within each group
@@ -111,7 +111,7 @@ def annealing_group_batch_loss(
     return loss
 
 
-def compute_output_log_probs(log_probs: torch.Tensor, actions: torch.Tensor, valid_mask: torch.Tensor, group_size: int) -> torch.Tensor:
+def _compute_output_log_probs(log_probs: torch.Tensor, actions: torch.Tensor, valid_mask: torch.Tensor, group_size: int) -> torch.Tensor:
     batch_size, steps, num_actions = log_probs.shape
     num_groups = batch_size // group_size
 
@@ -132,7 +132,7 @@ def compute_output_log_probs(log_probs: torch.Tensor, actions: torch.Tensor, val
     return sum_log_probs
 
 
-def compute_target_log_probs(rewards: torch.Tensor, temperature: float, group_size: int) -> torch.Tensor:
+def _compute_target_log_probs(rewards: torch.Tensor, temperature: float, group_size: int) -> torch.Tensor:
     # Group based view
     num_groups = rewards.shape[0] // group_size
     rewards = rewards.view(num_groups, group_size)

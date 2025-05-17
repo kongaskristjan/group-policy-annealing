@@ -41,6 +41,12 @@ def sample_batch_episode(policy: torch.nn.Module, envs: GroupedEnvironments) -> 
         actions_t = torch.stack(actions, dim=1)  # (batch_size, steps)
         rewards_t = torch.stack(rewards, dim=1)  # (batch_size, steps)
 
+        # Add a dummy step at the end to account for the episode ending
+        observations_t = torch.cat([observations_t, torch.zeros_like(observations_t[:, :1])], dim=1)
+        actions_t = torch.cat([actions_t, torch.zeros_like(actions_t[:, :1])], dim=1)
+        rewards_t = torch.cat([rewards_t, torch.zeros_like(rewards_t[:, :1])], dim=1)
+        valid_mask = torch.cat([valid_mask, torch.zeros_like(valid_mask[:, :1])], dim=1)
+
     return observations_t, actions_t, rewards_t, valid_mask
 
 

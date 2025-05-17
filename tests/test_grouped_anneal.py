@@ -1,6 +1,6 @@
 import torch
 
-from lib.grouped_anneal import anneal_group_batch_episode, annealing_group_batch_loss, compute_target_log_probs
+from lib.anneal_grouped import _compute_target_log_probs, anneal_grouped, grouped_loss
 from lib.model import get_model
 
 
@@ -20,7 +20,7 @@ def test_anneal_batch_episode_simple():
     optimizer = torch.optim.Adam(policy.parameters(), lr=0.05)
 
     # Run annealing with lower temperature and more steps
-    anneal_group_batch_episode(
+    anneal_grouped(
         policy=policy,
         observations=observations,
         actions=actions,
@@ -57,9 +57,9 @@ def test_gradient_direction_and_symmetry():
     rewards = torch.tensor([1.0, 0.0, 0.0, 1.0])  # Rewards: Group 1: [1, 0], Group 2: [0, 1] (reversed)
     valid_mask = torch.tensor([[True], [True], [True], [True]])
 
-    target_log_probs = compute_target_log_probs(rewards, 1.0, group_size)
+    target_log_probs = _compute_target_log_probs(rewards, 1.0, group_size)
     log_probs = torch.log_softmax(output, dim=2)
-    loss = annealing_group_batch_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
+    loss = grouped_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
     loss.backward()
 
     assert output.grad is not None
@@ -89,9 +89,9 @@ def test_masking_and_unpicked_gradients():
     rewards = torch.tensor([1.0, 0.0])
     valid_mask = torch.tensor([[True, False], [True, True]])  # Valid Mask: Mask out step 1 of trajectory 0
 
-    target_log_probs = compute_target_log_probs(rewards, 1.0, group_size)
+    target_log_probs = _compute_target_log_probs(rewards, 1.0, group_size)
     log_probs = torch.log(softmax_output)
-    loss = annealing_group_batch_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
+    loss = grouped_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
     softmax_output.retain_grad()
     loss.backward()
 
@@ -128,9 +128,9 @@ def test_zero_loss_for_perfect_match():
         requires_grad=True,
     )
 
-    target_log_probs = compute_target_log_probs(rewards, temperature, group_size)
+    target_log_probs = _compute_target_log_probs(rewards, temperature, group_size)
     log_probs = torch.log_softmax(output, dim=2)
-    loss = annealing_group_batch_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
+    loss = grouped_loss(log_probs, actions, valid_mask, target_log_probs, group_size)
 
     # Loss should be close to zero
     assert torch.isclose(loss, torch.tensor(0.0), atol=1e-6)

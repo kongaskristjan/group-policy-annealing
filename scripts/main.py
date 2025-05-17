@@ -9,7 +9,8 @@ from datetime import datetime
 
 import torch
 
-from lib.grouped_anneal import anneal_group_batch_episode
+from lib.anneal_grouped import anneal_grouped
+from lib.anneal_value_function import anneal_value_function
 from lib.grouped_environments import GroupedEnvironments
 from lib.model import get_model, get_temperature
 from lib.sample import render_episode, sample_batch_episode, validate
@@ -33,25 +34,37 @@ def main(args: Namespace) -> None:
 
 def run_experiment(args: Namespace) -> list[float]:
     envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization)
-    policy = get_model(envs.num_observations, envs.num_actions, hidden=[32])
-    optimizer = torch.optim.Adam(policy.parameters(), lr=args.learning_rate)
 
+    # Initialize policy model and optionally a value model
+    # Use common optimizer for both models
+    policy = get_model(envs.num_observations, envs.num_actions, hidden=[32])
+    value = get_model(envs.num_observations, 1, hidden=[32]) if args.value_model == "network" else None
+    params = list(policy.parameters()) + (list(value.parameters()) if value is not None else [])
+    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+
+    # Run annealing
     step_rewards: list[float] = []
     for step in range(args.anneal_steps):
+        # Render episode
         if args.render_freq > 0 and step % args.render_freq == 0:
             render_episode(policy, args.env_name)
 
+        # Validation
         if args.val_freq > 0 and step % args.val_freq == 0:
             val_reward = validate(policy, args.env_name, args.val_batch)
             print(f"Validation [{step} ({step * args.env_batch_size} samples)]: mean_reward - {val_reward:.2f}")
 
-        temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
-
+        # Sample batch
         observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
-        loss = anneal_group_batch_episode(
-            policy, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps
-        )
 
+        # Anneal
+        temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
+        if args.value_model == "grouped":
+            loss = anneal_grouped(policy, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
+        else:
+            loss = anneal_value_function(policy, value, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps)  # fmt: skip
+
+        # Log stats
         total_samples = step * len(observations)
         mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
         ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
@@ -66,7 +79,13 @@ def run_experiment(args: Namespace) -> list[float]:
 def parse_args() -> Namespace:
     # fmt: off
     parser = ArgumentParser()
+
+    # Environment arguments
     parser.add_argument("--env_name", type=str, default="CartPole-v1", help="The name of the environment to run")
+
+    # Optimization arguments
+    parser.add_argument("--value-model", type=str, default="grouped", help="The type of value function to use", choices=["grouped", "network"])
+    parser.add_argument("--discount-factor", type=float, default=0.98, help="The gamma discount factor for the value function")
     parser.add_argument("--anneal_steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
     parser.add_argument("--learning_rate", type=float, default=0.01, help="The learning rate for the optimizer")
     parser.add_argument("--temp_start", type=float, default=0.5, help="The initial temperature of the annealing algorithm")
@@ -86,6 +105,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--num_runs", type=int, default=1, help="Number of experiment runs to perform")
     args = parser.parse_args()
     # fmt: on
+
+    # Checks
+    if args.value_model == "network":
+        # Environments with same group have same seed, but we want different seeds for each environment
+        print("Setting group size to 1 as value is modeled with a neural network")
+        args.group_size = 1
+        args.disable_group_initialization = True
 
     return args
 
