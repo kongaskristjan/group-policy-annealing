@@ -341,9 +341,6 @@ class RenderValue:
         self.frames = []
         self.step_count = 0
         
-        # Calculate return-to-go for reference
-        self.returns = self._calculate_returns(rewards, valid_mask)
-        
         # Set up figure with initial state
         self.fig.update_layout(
             title=title,
@@ -375,22 +372,6 @@ class RenderValue:
         # If we didn't find any False values, return the full length
         return len(mask)
         
-    def _calculate_returns(self, rewards: torch.Tensor, valid_mask: torch.Tensor, gamma: float = 0.99) -> torch.Tensor:
-        """Calculate returns-to-go for each step"""
-        steps = rewards.shape[0]
-        returns = torch.zeros_like(rewards)
-        
-        # Calculate returns backwards
-        running_return = 0.0
-        for t in range(steps - 1, -1, -1):
-            if valid_mask[t]:
-                running_return = rewards[t] + gamma * running_return
-                returns[t] = running_return
-            else:
-                returns[t] = 0.0
-                running_return = 0.0
-                
-        return returns
         
     def update(self, policy: torch.nn.Module, value: torch.nn.Module, temp: float, discount_factor: float) -> None:
         """
@@ -418,8 +399,6 @@ class RenderValue:
         
         # Get rewards and valid mask as numpy arrays
         rewards = self.rewards.cpu().numpy()
-        valid_mask = self.valid_mask.cpu().numpy()
-        returns = self.returns.cpu().numpy()
         
         # Only use the valid part of the episode (up to episode_length)
         valid_indices = list(range(self.episode_length))
@@ -432,7 +411,6 @@ class RenderValue:
             "x": valid_indices,
             "values": value_preds[:self.episode_length],
             "rewards": rewards[:self.episode_length],
-            "returns": returns[:self.episode_length],
             "action_probs": taken_probs[:self.episode_length]
         }
         
@@ -456,7 +434,6 @@ class RenderValue:
             x = frame["x"]
             values = frame["values"]
             rewards = frame["rewards"]
-            returns = frame["returns"]
             action_probs = frame["action_probs"]
             
             # Create traces for this frame
@@ -472,16 +449,6 @@ class RenderValue:
                 marker=dict(size=8),
                 showlegend=True,
                 legendgroup="values"
-            )
-            
-            returns_trace = go.Scatter(
-                x=x, 
-                y=returns,
-                mode="lines",
-                name="Returns-to-go", 
-                line=dict(color="green", dash="dash"),
-                showlegend=True,
-                legendgroup="returns"
             )
             
             # Reward and policy traces (bottom subplot)
@@ -510,7 +477,6 @@ class RenderValue:
             # Collect all traces
             frame_traces = [
                 (value_trace, 1, 1),
-                (returns_trace, 1, 1),
                 (reward_trace, 2, 1),
                 (prob_trace, 2, 1)
             ]
@@ -540,7 +506,6 @@ class RenderValue:
         x = first_frame["x"]
         values = first_frame["values"]
         rewards = first_frame["rewards"]
-        returns = first_frame["returns"]
         action_probs = first_frame["action_probs"]
         
         # Add initial traces to the figure
@@ -552,17 +517,6 @@ class RenderValue:
                 name="Predicted Values",
                 line=dict(color="blue"),
                 marker=dict(size=8)
-            ),
-            row=1, col=1
-        )
-        
-        self.fig.add_trace(
-            go.Scatter(
-                x=x, 
-                y=returns,
-                mode="lines",
-                name="Returns-to-go", 
-                line=dict(color="green", dash="dash")
             ),
             row=1, col=1
         )
