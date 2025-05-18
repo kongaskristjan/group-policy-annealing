@@ -1,6 +1,6 @@
+import atexit
 import random
 import warnings
-import atexit
 from pathlib import Path
 
 import gymnasium as gym
@@ -43,13 +43,13 @@ class GroupedEnvironments:
         self.max_steps = max_steps
 
         self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync", render_mode="rgb_array")
-        
+
         # Initialize renderer before reset, so it's available during the first reset
         self.render = RenderEpisodes(render_path, batch_size, dummy_env)
-        
+
         # Register cleanup on exit to ensure video resources are released
         atexit.register(self.render.close)
-        
+
         self.reset()
 
     def reset(self) -> torch.Tensor:
