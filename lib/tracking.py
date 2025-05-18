@@ -316,9 +316,55 @@ class RenderValue:
             observations: Observations from the batch
             actions: Actions from the batch
             rewards: Rewards from the batch
+            valid_mask: Mask indicating which steps are valid
         """
-        pass
-
+        self.title = title
+        self.render_path = render_path
+        self.observations = observations
+        self.actions = actions
+        self.rewards = rewards
+        self.valid_mask = valid_mask
+        
+        # Create subplots with 2 rows
+        self.fig = make_subplots(
+            rows=2, 
+            cols=1, 
+            subplot_titles=["Value Function", "Rewards and Policy Probabilities"],
+            vertical_spacing=0.2
+        )
+        
+        # Storage for animation frames
+        self.frames = []
+        self.step_count = 0
+        
+        # Calculate return-to-go for reference
+        self.returns = self._calculate_returns(rewards, valid_mask)
+        
+        # Set up figure with initial state
+        self.fig.update_layout(
+            title=title,
+            width=800,
+            height=800,
+            showlegend=True
+        )
+        
+    def _calculate_returns(self, rewards: torch.Tensor, valid_mask: torch.Tensor, gamma: float = 0.99) -> torch.Tensor:
+        """Calculate returns-to-go for each step"""
+        steps = rewards.shape[0]
+        returns = torch.zeros_like(rewards)
+        
+        # Calculate returns backwards
+        running_return = 0.0
+        for t in range(steps - 1, -1, -1):
+            if valid_mask[t]:
+                running_return = rewards[t] + gamma * running_return
+                returns[t] = running_return
+            else:
+                returns[t] = 0.0
+                running_return = 0.0
+                
+        return returns
+        
     def update(self, policy: torch.nn.Module, value: torch.nn.Module, temp: float, discount_factor: float) -> None:
         """
         Store new frame of the animation with new policy and value functions.
@@ -329,10 +375,326 @@ class RenderValue:
             temp: Temperature
             discount_factor: Discount factor
         """
-        pass
-
+        # Get original shapes
+        steps = self.observations.shape[0]
+        
+        # Generate values
+        with torch.no_grad():
+            # Get value predictions
+            value_preds = value(self.observations).squeeze().detach().cpu().numpy()
+            
+            # Get policy outputs and convert to probabilities
+            policy_outputs = policy(self.observations)
+            probs = torch.softmax(policy_outputs, dim=1).detach().cpu().numpy()
+            
+            # Get probability of the actions that were actually taken
+            action_indices = self.actions.long().cpu().numpy()
+            taken_probs = np.array([probs[i, action_indices[i]] for i in range(steps)])
+        
+        # Get rewards and valid mask as numpy arrays
+        rewards = self.rewards.cpu().numpy()
+        valid_mask = self.valid_mask.cpu().numpy()
+        returns = self.returns.cpu().numpy()
+        
+        # Create a dictionary to store the frame data
+        frame_data = {
+            "step": self.step_count,
+            "temp": temp,
+            "discount": discount_factor,
+            "x": list(range(steps)),
+            "valid_mask": valid_mask,
+            "values": value_preds,
+            "rewards": rewards,
+            "returns": returns,
+            "action_probs": taken_probs
+        }
+        
+        # Store the frame
+        self.frames.append(frame_data)
+        self.step_count += 1
+        
     def close(self) -> None:
         """
         Save the animated plot.
         """
-        pass
+        if not self.frames:
+            print("No frames to render.")
+            return
+            
+        # Create frames for animation
+        animation_frames = []
+        for frame in self.frames:
+            # Get data for this frame
+            x = frame["x"]
+            valid_mask = frame["valid_mask"]
+            values = frame["values"]
+            rewards = frame["rewards"]
+            returns = frame["returns"]
+            action_probs = frame["action_probs"]
+            
+            # Create traces for this frame
+            frame_traces = []
+            
+            # Value traces (top subplot)
+            value_trace = go.Scatter(
+                x=x, 
+                y=values,
+                mode="lines+markers",
+                name="Predicted Values",
+                line=dict(color="blue"),
+                marker=dict(size=8),
+                showlegend=True,
+                legendgroup="values"
+            )
+            
+            returns_trace = go.Scatter(
+                x=x, 
+                y=returns,
+                mode="lines",
+                name="Returns-to-go", 
+                line=dict(color="green", dash="dash"),
+                showlegend=True,
+                legendgroup="returns"
+            )
+            
+            # Add a trace showing which steps are masked
+            invalid_x = [i for i, v in enumerate(valid_mask) if v == 0]
+            invalid_y = [0] * len(invalid_x)  # Just a placeholder
+            invalid_trace = go.Scatter(
+                x=invalid_x,
+                y=invalid_y,
+                mode="markers",
+                marker=dict(
+                    color="red",
+                    symbol="x",
+                    size=12,
+                    opacity=0.7
+                ),
+                name="Invalid Steps",
+                showlegend=True,
+                legendgroup="invalid"
+            )
+            
+            # Reward and policy traces (bottom subplot)
+            reward_trace = go.Scatter(
+                x=x,
+                y=rewards,
+                mode="lines+markers",
+                name="Rewards",
+                line=dict(color="orange"),
+                marker=dict(size=8),
+                showlegend=True,
+                legendgroup="rewards"
+            )
+            
+            prob_trace = go.Scatter(
+                x=x,
+                y=action_probs,
+                mode="lines+markers",
+                name="Action Probabilities",
+                line=dict(color="purple"),
+                marker=dict(size=8),
+                showlegend=True,
+                legendgroup="probs"
+            )
+            
+            # Collect all traces
+            frame_traces = [
+                (value_trace, 1, 1),
+                (returns_trace, 1, 1),
+                (invalid_trace, 1, 1),
+                (reward_trace, 2, 1),
+                (prob_trace, 2, 1)
+            ]
+            
+            # Create animation frame
+            animation_frame = {"data": [], "name": f"Step {frame['step']}"}
+            
+            # Add traces to animation frame with proper subplot placement
+            for trace, row, col in frame_traces:
+                # Create a new trace with the same properties instead of using copy()
+                trace_dict = trace.to_plotly_json()
+                trace_dict.update({"xaxis": f"x{row}" if row > 1 else "x", "yaxis": f"y{row}" if row > 1 else "y"})
+                animation_frame["data"].append(trace_dict)
+            
+            # Add frame title with current temperature and discount
+            animation_frame["layout"] = {
+                "title": f"{self.title} - Step {frame['step']}, Temp: {frame['temp']:.4f}, Discount: {frame['discount']:.4f}"
+            }
+            
+            animation_frames.append(animation_frame)
+        
+        # Create animation
+        self.fig.frames = animation_frames
+        
+        # Add initial traces (will be updated by frames)
+        first_frame = self.frames[0]
+        x = first_frame["x"]
+        valid_mask = first_frame["valid_mask"]
+        values = first_frame["values"]
+        rewards = first_frame["rewards"]
+        returns = first_frame["returns"]
+        action_probs = first_frame["action_probs"]
+        
+        # Add initial traces to the figure
+        self.fig.add_trace(
+            go.Scatter(
+                x=x, 
+                y=values,
+                mode="lines+markers",
+                name="Predicted Values",
+                line=dict(color="blue"),
+                marker=dict(size=8)
+            ),
+            row=1, col=1
+        )
+        
+        self.fig.add_trace(
+            go.Scatter(
+                x=x, 
+                y=returns,
+                mode="lines",
+                name="Returns-to-go", 
+                line=dict(color="green", dash="dash")
+            ),
+            row=1, col=1
+        )
+        
+        # Add a trace showing which steps are masked
+        invalid_x = [i for i, v in enumerate(valid_mask) if v == 0]
+        invalid_y = [0] * len(invalid_x)  # Just a placeholder
+        self.fig.add_trace(
+            go.Scatter(
+                x=invalid_x,
+                y=invalid_y,
+                mode="markers",
+                marker=dict(
+                    color="red",
+                    symbol="x",
+                    size=12,
+                    opacity=0.7
+                ),
+                name="Invalid Steps"
+            ),
+            row=1, col=1
+        )
+        
+        self.fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=rewards,
+                mode="lines+markers",
+                name="Rewards",
+                line=dict(color="orange"),
+                marker=dict(size=8)
+            ),
+            row=2, col=1
+        )
+        
+        self.fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=action_probs,
+                mode="lines+markers",
+                name="Action Probabilities",
+                line=dict(color="purple"),
+                marker=dict(size=8)
+            ),
+            row=2, col=1
+        )
+        
+        # Add slider for navigation through steps
+        steps = []
+        for i, frame in enumerate(self.frames):
+            step = {
+                "args": [
+                    [f"Step {frame['step']}"],
+                    {
+                        "frame": {"duration": 300, "redraw": True},
+                        "mode": "immediate",
+                        "transition": {"duration": 300}
+                    }
+                ],
+                "label": f"Step {frame['step']}",
+                "method": "animate"
+            }
+            steps.append(step)
+        
+        sliders = [{
+            "active": 0,
+            "yanchor": "top",
+            "xanchor": "left",
+            "currentvalue": {
+                "font": {"size": 16},
+                "prefix": "Annealing Step: ",
+                "visible": True,
+                "xanchor": "right"
+            },
+            "transition": {"duration": 300, "easing": "cubic-in-out"},
+            "pad": {"b": 10, "t": 50},
+            "len": 0.9,
+            "x": 0.1,
+            "y": 0,
+            "steps": steps
+        }]
+        
+        # Add play and pause buttons
+        updatemenus = [{
+            "buttons": [
+                {
+                    "args": [
+                        None, 
+                        {
+                            "frame": {"duration": 300, "redraw": True},
+                            "fromcurrent": True, 
+                            "transition": {"duration": 300}
+                        }
+                    ],
+                    "label": "Play",
+                    "method": "animate"
+                },
+                {
+                    "args": [
+                        [None], 
+                        {
+                            "frame": {"duration": 0, "redraw": True},
+                            "mode": "immediate",
+                            "transition": {"duration": 0}
+                        }
+                    ],
+                    "label": "Pause",
+                    "method": "animate"
+                }
+            ],
+            "direction": "left",
+            "pad": {"r": 10, "t": 87},
+            "showactive": False,
+            "type": "buttons",
+            "x": 0.1,
+            "xanchor": "right",
+            "y": 0,
+            "yanchor": "top"
+        }]
+        
+        # Update layout with animation controls
+        self.fig.update_layout(
+            updatemenus=updatemenus,
+            sliders=sliders
+        )
+        
+        # Update axes labels
+        self.fig.update_xaxes(title_text="Step", row=1, col=1)
+        self.fig.update_yaxes(title_text="Value", row=1, col=1)
+        self.fig.update_xaxes(title_text="Step", row=2, col=1)
+        self.fig.update_yaxes(title_text="Value", row=2, col=1)
+        
+        # Make sure the directory exists
+        os.makedirs(self.render_path.parent, exist_ok=True)
+        
+        # Save the figure to HTML
+        self.fig.write_html(
+            self.render_path,
+            include_plotlyjs="cdn",
+            full_html=True,
+            auto_open=False
+        )

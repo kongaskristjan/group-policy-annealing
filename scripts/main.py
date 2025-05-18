@@ -77,6 +77,10 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
+        
+    # Close the first observation renderer if it was created
+    if render_first_obs is not None:
+        render_first_obs.close()
 
     return step_rewards
 
