@@ -65,6 +65,7 @@ def anneal_value_function(
     render: RenderValue | None = None
     if render_path is not None:
         render = RenderValue("Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], valid_mask[0])
+        render.update(policy, value, temperature, discount_factor)
 
     for _ in range(optim_steps):
         optimizer.zero_grad()
