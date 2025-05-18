@@ -305,14 +305,14 @@ class RenderValue:
     """
 
     def __init__(
-        self, title: str, render_path: Path | None, observations: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, valid_mask: torch.Tensor
+        self, title: str, render_path: Path, observations: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, valid_mask: torch.Tensor
     ):
         """
         Initialize the value renderer.
 
         Args:
             title: Title of the animation
-            render_path: Path to save the rendered animation (None to disable rendering)
+            render_path: Path to save the rendered animation
             observations: Observations from the batch
             actions: Actions from the batch
             rewards: Rewards from the batch

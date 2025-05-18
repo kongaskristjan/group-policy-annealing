@@ -62,7 +62,10 @@ def anneal_value_function(
 
     # Training loop
     losses = []
-    render = RenderValue("Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], valid_mask[0])
+    render: RenderValue | None = None
+    if render_path is not None:
+        render = RenderValue("Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], valid_mask[0])
+
     for _ in range(optim_steps):
         optimizer.zero_grad()
         policy_output = policy(torch.reshape(observations, (batch_size * steps, num_observations)))
@@ -74,7 +77,9 @@ def anneal_value_function(
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
-        render.update(policy, value, temperature, discount_factor)
+        if render is not None:
+            render.update(policy, value, temperature, discount_factor)
 
-    render.close()
+    if render is not None:
+        render.close()
     return losses

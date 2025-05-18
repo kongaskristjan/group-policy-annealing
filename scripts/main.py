@@ -54,11 +54,12 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
 
         # Render first observation
-        if render_first_obs is None:
-            first_obs_path = run_path / "first_observation_value.html" if args.render else None
-            render_first_obs = RenderValue(
-                "First episode over annealing steps", first_obs_path, observations[0], actions[0], rewards[0], valid_mask[0]
-            )
+        if args.render:
+            if render_first_obs is None:
+                first_obs_path = run_path / "first_observation_value.html"
+                render_first_obs = RenderValue(
+                    "First episode over annealing steps", first_obs_path, observations[0], actions[0], rewards[0], valid_mask[0]
+                )
             render_first_obs.update(policy, value, temp, args.discount_factor)
 
         # Anneal
