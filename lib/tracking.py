@@ -9,6 +9,7 @@ from typing import Any, Optional
 import cv2
 import numpy as np
 import plotly.graph_objects as go
+import torch
 from plotly.subplots import make_subplots
 from pydantic import BaseModel
 
@@ -295,3 +296,43 @@ class RenderEpisodes:
         """Release the video writer resources."""
         if self.video_writer is not None:
             self.video_writer.release()
+
+
+class RenderValue:
+    """
+    Renders training value and other training data from a batch of environments into a single plotly animation (in a HTML container).
+    The animation spans either the annealing steps or a single annealing episode.
+    """
+
+    def __init__(
+        self, title: str, render_path: Path | None, observations: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, valid_mask: torch.Tensor
+    ):
+        """
+        Initialize the value renderer.
+
+        Args:
+            title: Title of the animation
+            render_path: Path to save the rendered animation (None to disable rendering)
+            observations: Observations from the batch
+            actions: Actions from the batch
+            rewards: Rewards from the batch
+        """
+        pass
+
+    def update(self, policy: torch.nn.Module, value: torch.nn.Module, temp: float, discount_factor: float) -> None:
+        """
+        Store new frame of the animation with new policy and value functions.
+
+        Args:
+            policy: Policy function
+            value: Value function
+            temp: Temperature
+            discount_factor: Discount factor
+        """
+        pass
+
+    def close(self) -> None:
+        """
+        Save the animated plot.
+        """
+        pass

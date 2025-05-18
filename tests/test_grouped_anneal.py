@@ -1,6 +1,7 @@
 import torch
 
-from lib.anneal_grouped import _compute_target_log_probs, anneal_grouped, grouped_loss
+from lib.anneal_grouped import anneal_grouped, grouped_loss
+from lib.loss_grouped import _compute_target_log_probs
 from lib.model import get_model
 
 

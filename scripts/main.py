@@ -14,7 +14,7 @@ from lib.anneal_value_function import anneal_value_function
 from lib.grouped_environments import GroupedEnvironments
 from lib.model import get_model, get_temperature
 from lib.sample import sample_batch_episode
-from lib.tracking import get_git_info, save_run
+from lib.tracking import RenderValue, get_git_info, save_run
 
 
 def main(args: Namespace) -> None:
@@ -46,16 +46,27 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
 
     # Run annealing
     step_rewards: list[float] = []
+    render_first_obs: RenderValue | None = None
     for step in range(args.anneal_steps):
+        temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
+
         # Sample batch
         observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
 
+        # Render first observation
+        if render_first_obs is None:
+            first_obs_path = run_path / "first_observation_value.html" if args.render else None
+            render_first_obs = RenderValue(
+                "First episode over annealing steps", first_obs_path, observations[0], actions[0], rewards[0], valid_mask[0]
+            )
+            render_first_obs.update(policy, value, temp, args.discount_factor)
+
         # Anneal
-        temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
         if args.value_model == "grouped":
             loss = anneal_grouped(policy, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
         else:
-            loss = anneal_value_function(policy, value, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps)  # fmt: skip
+            anneal_render_path = run_path / "value_over_steps" / f"{step:03d}.html" if args.render else None
+            loss = anneal_value_function(policy, value, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps, anneal_render_path)  # fmt: skip
 
         # Log stats
         total_samples = step * len(observations)
