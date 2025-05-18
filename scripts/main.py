@@ -33,7 +33,8 @@ def main(args: Namespace) -> None:
 
 
 def run_experiment(args: Namespace, run_path: Path) -> list[float]:
-    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render_path=args.render)
+    render_path = run_path / "training.mp4" if args.render else None
+    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render_path=render_path)
 
     # Initialize policy model and optionally a value model
     # Use common optimizer for both models

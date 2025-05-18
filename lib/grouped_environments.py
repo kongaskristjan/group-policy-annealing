@@ -1,10 +1,13 @@
 import random
 import warnings
+import atexit
 from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
 import torch
+
+from lib.tracking import RenderEpisodes
 
 
 class GroupedEnvironments:
@@ -26,9 +29,9 @@ class GroupedEnvironments:
         assert group_size > 0 and batch_size > 0, "Group size and batch size must be positive"
         assert batch_size % group_size == 0, "Batch size must be divisible by group size"
 
-        info_env = gym.make(env_name)
-        self.num_observations = info_env.observation_space.shape[0]  # type: ignore
-        self.num_actions = info_env.action_space.n  # type: ignore
+        dummy_env = gym.make(env_name, render_mode="rgb_array")
+        self.num_observations = dummy_env.observation_space.shape[0]  # type: ignore
+        self.num_actions = dummy_env.action_space.n  # type: ignore
 
         self.env_name = env_name
         self.group_size = group_size
@@ -39,7 +42,14 @@ class GroupedEnvironments:
         self.current_step = 0
         self.max_steps = max_steps
 
-        self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync")
+        self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync", render_mode="rgb_array")
+        
+        # Initialize renderer before reset, so it's available during the first reset
+        self.render = RenderEpisodes(render_path, batch_size, dummy_env)
+        
+        # Register cleanup on exit to ensure video resources are released
+        atexit.register(self.render.close)
+        
         self.reset()
 
     def reset(self) -> torch.Tensor:
@@ -54,6 +64,8 @@ class GroupedEnvironments:
         group_seeds = [self.rng.randint(0, 2**32 - 1) for _ in range(self.batch_size // seeding_group_size)]
         group_seeds = [group_seeds[i // seeding_group_size] for i in range(self.batch_size)]
         obs, infos = self.envs.reset(seed=group_seeds)  # type: ignore
+
+        self.render.reset()
 
         return self._transform_observation(obs)
 
@@ -82,6 +94,9 @@ class GroupedEnvironments:
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
         self.current_step += 1
+
+        self.render.step(self.envs, rewards * self.valid_masks[-1], self.valid_masks[-1])
+
         return self._transform_observation(obs), self._transform_rewards(rewards, self.valid_masks[-1]), done
 
     def get_valid_mask(self) -> torch.Tensor:
