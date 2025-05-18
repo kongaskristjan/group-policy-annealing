@@ -91,11 +91,12 @@ class GroupedEnvironments:
         self.current_valid_mask = np.logical_and(self.current_valid_mask, np.logical_not(truncations))
 
         done = not bool(self.current_valid_mask.any())
+        self.render.step(self.envs, rewards * self.valid_masks[-1], self.valid_masks[-1])  # Regular rendering
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
+        if done:
+            self.render.step(self.envs, rewards * self.current_valid_mask, self.current_valid_mask)  # Show that all environments are done
         self.current_step += 1
-
-        self.render.step(self.envs, rewards * self.valid_masks[-1], self.valid_masks[-1])
 
         return self._transform_observation(obs), self._transform_rewards(rewards, self.valid_masks[-1]), done
 
