@@ -329,23 +329,29 @@ class RenderValue:
         # Find the episode length (where valid_mask changes from True to False)
         self.episode_length = self._get_episode_length(valid_mask)
         
-        # Create subplots with 2 rows
+        # Create subplots with 3 rows
         self.fig = make_subplots(
-            rows=2, 
+            rows=3, 
             cols=1, 
-            subplot_titles=["Value Function", "Rewards and Policy Probabilities"],
-            vertical_spacing=0.2
+            subplot_titles=["Value Function", "Rewards", "Action Probabilities"],
+            vertical_spacing=0.1
         )
         
         # Storage for animation frames
         self.frames = []
         self.step_count = 0
         
+        # Track min/max values for y-axis scaling
+        self.min_value = float('inf')
+        self.max_value = float('-inf')
+        self.min_reward = float('inf')
+        self.max_reward = float('-inf')
+        
         # Set up figure with initial state
         self.fig.update_layout(
             title=title,
             width=800,
-            height=800,
+            height=900,  # Increased height for three subplots
             showlegend=True
         )
     
@@ -403,15 +409,26 @@ class RenderValue:
         # Only use the valid part of the episode (up to episode_length)
         valid_indices = list(range(self.episode_length))
         
+        # Get valid parts of data
+        valid_values = value_preds[:self.episode_length]
+        valid_rewards = rewards[:self.episode_length]
+        valid_probs = taken_probs[:self.episode_length]
+        
+        # Update min/max values for y-axis scaling
+        self.min_value = min(self.min_value, valid_values.min())
+        self.max_value = max(self.max_value, valid_values.max())
+        self.min_reward = min(self.min_reward, valid_rewards.min())
+        self.max_reward = max(self.max_reward, valid_rewards.max())
+        
         # Create a dictionary to store the frame data
         frame_data = {
             "step": self.step_count,
             "temp": temp,
             "discount": discount_factor,
             "x": valid_indices,
-            "values": value_preds[:self.episode_length],
-            "rewards": rewards[:self.episode_length],
-            "action_probs": taken_probs[:self.episode_length]
+            "values": valid_values,
+            "rewards": valid_rewards,
+            "action_probs": valid_probs
         }
         
         # Store the frame
@@ -439,7 +456,7 @@ class RenderValue:
             # Create traces for this frame
             frame_traces = []
             
-            # Value traces (top subplot)
+            # Value trace (first/top subplot)
             value_trace = go.Scatter(
                 x=x, 
                 y=values,
@@ -451,7 +468,7 @@ class RenderValue:
                 legendgroup="values"
             )
             
-            # Reward and policy traces (bottom subplot)
+            # Reward trace (middle subplot)
             reward_trace = go.Scatter(
                 x=x,
                 y=rewards,
@@ -463,6 +480,7 @@ class RenderValue:
                 legendgroup="rewards"
             )
             
+            # Action probability trace (bottom subplot)
             prob_trace = go.Scatter(
                 x=x,
                 y=action_probs,
@@ -474,11 +492,11 @@ class RenderValue:
                 legendgroup="probs"
             )
             
-            # Collect all traces
+            # Collect all traces with their corresponding subplot positions
             frame_traces = [
-                (value_trace, 1, 1),
-                (reward_trace, 2, 1),
-                (prob_trace, 2, 1)
+                (value_trace, 1, 1),  # Values in row 1
+                (reward_trace, 2, 1),  # Rewards in row 2
+                (prob_trace, 3, 1)    # Probabilities in row 3
             ]
             
             # Create animation frame
@@ -508,7 +526,7 @@ class RenderValue:
         rewards = first_frame["rewards"]
         action_probs = first_frame["action_probs"]
         
-        # Add initial traces to the figure
+        # Add value trace to the first (top) subplot
         self.fig.add_trace(
             go.Scatter(
                 x=x, 
@@ -521,6 +539,7 @@ class RenderValue:
             row=1, col=1
         )
         
+        # Add reward trace to the second (middle) subplot
         self.fig.add_trace(
             go.Scatter(
                 x=x,
@@ -533,6 +552,7 @@ class RenderValue:
             row=2, col=1
         )
         
+        # Add action probability trace to the third (bottom) subplot
         self.fig.add_trace(
             go.Scatter(
                 x=x,
@@ -542,7 +562,7 @@ class RenderValue:
                 line=dict(color="purple"),
                 marker=dict(size=8)
             ),
-            row=2, col=1
+            row=3, col=1
         )
         
         # Add slider for navigation through steps
@@ -624,11 +644,42 @@ class RenderValue:
             sliders=sliders
         )
         
-        # Update axes labels
+        # Update axes labels and ranges
+        # First subplot - Value Function
         self.fig.update_xaxes(title_text="Step", row=1, col=1)
-        self.fig.update_yaxes(title_text="Value", row=1, col=1)
+        self.fig.update_yaxes(
+            title_text="Value", 
+            row=1, 
+            col=1,
+            # Set y-axis range with some padding
+            range=[
+                self.min_value - 0.1 * (self.max_value - self.min_value),
+                self.max_value + 0.1 * (self.max_value - self.min_value)
+            ]
+        )
+        
+        # Second subplot - Rewards
         self.fig.update_xaxes(title_text="Step", row=2, col=1)
-        self.fig.update_yaxes(title_text="Value", row=2, col=1)
+        self.fig.update_yaxes(
+            title_text="Reward", 
+            row=2, 
+            col=1,
+            # Set y-axis range with some padding
+            range=[
+                self.min_reward - 0.1 * (self.max_reward - self.min_reward),
+                self.max_reward + 0.1 * (self.max_reward - self.min_reward)
+            ]
+        )
+        
+        # Third subplot - Action Probabilities
+        self.fig.update_xaxes(title_text="Step", row=3, col=1)
+        self.fig.update_yaxes(
+            title_text="Probability", 
+            row=3, 
+            col=1,
+            # Fixed range from 0 to 1 for probabilities
+            range=[0, 1]
+        )
         
         # Make sure the directory exists
         os.makedirs(self.render_path.parent, exist_ok=True)
