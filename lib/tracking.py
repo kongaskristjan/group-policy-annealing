@@ -302,6 +302,7 @@ class RenderValue:
     """
     Renders training value and other training data from a batch of environments into a single plotly animation (in a HTML container).
     The animation spans either the annealing steps or a single annealing episode.
+    Only visualizes the valid part of the episode (where valid_mask is True).
     """
 
     def __init__(
@@ -325,6 +326,9 @@ class RenderValue:
         self.rewards = rewards
         self.valid_mask = valid_mask
         
+        # Find the episode length (where valid_mask changes from True to False)
+        self.episode_length = self._get_episode_length(valid_mask)
+        
         # Create subplots with 2 rows
         self.fig = make_subplots(
             rows=2, 
@@ -347,6 +351,29 @@ class RenderValue:
             height=800,
             showlegend=True
         )
+    
+    def _get_episode_length(self, mask: torch.Tensor) -> int:
+        """
+        Find the episode length by identifying where valid_mask changes from True to False.
+        If all values are True, returns the full length.
+        
+        Args:
+            mask: The valid_mask tensor
+            
+        Returns:
+            The episode length
+        """
+        # If all values are True, return the full length
+        if all(mask):
+            return len(mask)
+            
+        # Find the first False value
+        for i in range(len(mask)):
+            if not mask[i]:
+                return i
+                
+        # If we didn't find any False values, return the full length
+        return len(mask)
         
     def _calculate_returns(self, rewards: torch.Tensor, valid_mask: torch.Tensor, gamma: float = 0.99) -> torch.Tensor:
         """Calculate returns-to-go for each step"""
@@ -368,6 +395,7 @@ class RenderValue:
     def update(self, policy: torch.nn.Module, value: torch.nn.Module, temp: float, discount_factor: float) -> None:
         """
         Store new frame of the animation with new policy and value functions.
+        Only stores data for the valid part of the episode (where valid_mask is True).
 
         Args:
             policy: Policy function
@@ -375,9 +403,6 @@ class RenderValue:
             temp: Temperature
             discount_factor: Discount factor
         """
-        # Get original shapes
-        steps = self.observations.shape[0]
-        
         # Generate values
         with torch.no_grad():
             # Get value predictions
@@ -389,24 +414,26 @@ class RenderValue:
             
             # Get probability of the actions that were actually taken
             action_indices = self.actions.long().cpu().numpy()
-            taken_probs = np.array([probs[i, action_indices[i]] for i in range(steps)])
+            taken_probs = np.array([probs[i, action_indices[i]] for i in range(len(self.observations))])
         
         # Get rewards and valid mask as numpy arrays
         rewards = self.rewards.cpu().numpy()
         valid_mask = self.valid_mask.cpu().numpy()
         returns = self.returns.cpu().numpy()
         
+        # Only use the valid part of the episode (up to episode_length)
+        valid_indices = list(range(self.episode_length))
+        
         # Create a dictionary to store the frame data
         frame_data = {
             "step": self.step_count,
             "temp": temp,
             "discount": discount_factor,
-            "x": list(range(steps)),
-            "valid_mask": valid_mask,
-            "values": value_preds,
-            "rewards": rewards,
-            "returns": returns,
-            "action_probs": taken_probs
+            "x": valid_indices,
+            "values": value_preds[:self.episode_length],
+            "rewards": rewards[:self.episode_length],
+            "returns": returns[:self.episode_length],
+            "action_probs": taken_probs[:self.episode_length]
         }
         
         # Store the frame
@@ -416,6 +443,7 @@ class RenderValue:
     def close(self) -> None:
         """
         Save the animated plot.
+        Only shows the valid part of the episode (where valid_mask is True).
         """
         if not self.frames:
             print("No frames to render.")
@@ -424,9 +452,8 @@ class RenderValue:
         # Create frames for animation
         animation_frames = []
         for frame in self.frames:
-            # Get data for this frame
+            # Get data for this frame (already filtered to only valid steps)
             x = frame["x"]
-            valid_mask = frame["valid_mask"]
             values = frame["values"]
             rewards = frame["rewards"]
             returns = frame["returns"]
@@ -457,24 +484,6 @@ class RenderValue:
                 legendgroup="returns"
             )
             
-            # Add a trace showing which steps are masked
-            invalid_x = [i for i, v in enumerate(valid_mask) if v == 0]
-            invalid_y = [0] * len(invalid_x)  # Just a placeholder
-            invalid_trace = go.Scatter(
-                x=invalid_x,
-                y=invalid_y,
-                mode="markers",
-                marker=dict(
-                    color="red",
-                    symbol="x",
-                    size=12,
-                    opacity=0.7
-                ),
-                name="Invalid Steps",
-                showlegend=True,
-                legendgroup="invalid"
-            )
-            
             # Reward and policy traces (bottom subplot)
             reward_trace = go.Scatter(
                 x=x,
@@ -502,7 +511,6 @@ class RenderValue:
             frame_traces = [
                 (value_trace, 1, 1),
                 (returns_trace, 1, 1),
-                (invalid_trace, 1, 1),
                 (reward_trace, 2, 1),
                 (prob_trace, 2, 1)
             ]
@@ -530,7 +538,6 @@ class RenderValue:
         # Add initial traces (will be updated by frames)
         first_frame = self.frames[0]
         x = first_frame["x"]
-        valid_mask = first_frame["valid_mask"]
         values = first_frame["values"]
         rewards = first_frame["rewards"]
         returns = first_frame["returns"]
@@ -556,25 +563,6 @@ class RenderValue:
                 mode="lines",
                 name="Returns-to-go", 
                 line=dict(color="green", dash="dash")
-            ),
-            row=1, col=1
-        )
-        
-        # Add a trace showing which steps are masked
-        invalid_x = [i for i, v in enumerate(valid_mask) if v == 0]
-        invalid_y = [0] * len(invalid_x)  # Just a placeholder
-        self.fig.add_trace(
-            go.Scatter(
-                x=invalid_x,
-                y=invalid_y,
-                mode="markers",
-                marker=dict(
-                    color="red",
-                    symbol="x",
-                    size=12,
-                    opacity=0.7
-                ),
-                name="Invalid Steps"
             ),
             row=1, col=1
         )
