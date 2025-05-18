@@ -37,9 +37,8 @@ class GroupedEnvironments:
 
         self.current_step = 0
         self.max_steps = max_steps
-        self.render = render
 
-        self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync", render_mode="human" if render else None)
+        self.envs = gym.make_vec(env_name, num_envs=batch_size, vectorization_mode="sync")
         self.reset()
 
     def reset(self) -> torch.Tensor:
@@ -77,9 +76,6 @@ class GroupedEnvironments:
         self.valid_masks.append(self.current_valid_mask)
         truncations = np.logical_or(termination_mask, truncation_mask)
         self.current_valid_mask = np.logical_and(self.current_valid_mask, np.logical_not(truncations))
-
-        if self.render:
-            self.envs.render()
 
         done = not bool(self.current_valid_mask.any())
         if self.max_steps is not None and self.current_step >= self.max_steps:

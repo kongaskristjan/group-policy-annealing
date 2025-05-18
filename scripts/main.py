@@ -13,7 +13,7 @@ from lib.anneal_grouped import anneal_grouped
 from lib.anneal_value_function import anneal_value_function
 from lib.grouped_environments import GroupedEnvironments
 from lib.model import get_model, get_temperature
-from lib.sample import render_episode, sample_batch_episode, validate
+from lib.sample import sample_batch_episode
 from lib.tracking import get_git_info, save_run
 
 
@@ -33,7 +33,7 @@ def main(args: Namespace) -> None:
 
 
 def run_experiment(args: Namespace) -> list[float]:
-    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization)
+    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render=args.render)
 
     # Initialize policy model and optionally a value model
     # Use common optimizer for both models
@@ -45,15 +45,6 @@ def run_experiment(args: Namespace) -> list[float]:
     # Run annealing
     step_rewards: list[float] = []
     for step in range(args.anneal_steps):
-        # Render episode
-        if args.render_freq > 0 and step % args.render_freq == 0:
-            render_episode(policy, args.env_name)
-
-        # Validation
-        if args.val_freq > 0 and step % args.val_freq == 0:
-            val_reward = validate(policy, args.env_name, args.val_batch)
-            print(f"Validation [{step} ({step * args.env_batch_size} samples)]: mean_reward - {val_reward:.2f}")
-
         # Sample batch
         observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
 
@@ -92,14 +83,12 @@ def parse_args() -> Namespace:
     parser.add_argument("--temp_end", type=float, default=0.5, help="The final temperature of the annealing algorithm")
     parser.add_argument("--clip_eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
     parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
-    parser.add_argument("--disable_group_initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size.")
+    parser.add_argument("--disable_group_initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size")
     parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
     parser.add_argument("--optim_steps", type=int, default=30, help="The number of optimization steps within each annealing step")
 
     # Validation arguments
-    parser.add_argument("--val_freq", type=int, default=0, help="Frequency of validation in terms of annealing steps (0 to disable)")
-    parser.add_argument("--val_batch", type=int, default=32, help="Number of environments to run during validation")
-    parser.add_argument("--render_freq", type=int, default=0, help="Frequency of rendering in terms of annealing steps (0 to disable)")
+    parser.add_argument("--render", action="store_true", help="Create various visualizations of the training process into `runs/` directory")
 
     # Experiment arguments
     parser.add_argument("--num_runs", type=int, default=1, help="Number of experiment runs to perform")

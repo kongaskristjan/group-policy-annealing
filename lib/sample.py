@@ -48,16 +48,3 @@ def sample_batch_episode(policy: torch.nn.Module, envs: GroupedEnvironments) -> 
         valid_mask = torch.cat([valid_mask, torch.zeros_like(valid_mask[:, :1])], dim=1)
 
     return observations_t, actions_t, rewards_t, valid_mask
-
-
-def validate(policy: torch.nn.Module, env_name: str, val_batch: int) -> float:
-    """Run validation episodes and return the mean reward"""
-    val_envs = GroupedEnvironments(env_name, 1, val_batch)
-    observations, actions, rewards, valid_mask = sample_batch_episode(policy, val_envs)
-    return torch.mean(torch.sum(rewards * valid_mask, dim=1)).item()
-
-
-def render_episode(policy: torch.nn.Module, env_name: str) -> None:
-    """Render a single episode of the policy model in the given environment"""
-    val_envs = GroupedEnvironments(env_name, 1, 1, render=True)
-    observations, actions, rewards, valid_mask = sample_batch_episode(policy, val_envs)
