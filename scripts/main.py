@@ -21,6 +21,7 @@ def main(args: Namespace) -> None:
     timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
     git_info = get_git_info()
     run_path = Path(__file__).parent.parent / "runs" / timestamp
+    print(f"Run data will be stored in {run_path}")
 
     all_step_rewards: list[list[float]] = []
     for run in range(args.num_runs):
@@ -78,21 +79,21 @@ def parse_args() -> Namespace:
     # Optimization arguments
     parser.add_argument("--value-model", type=str, default="grouped", help="The type of value function to use", choices=["grouped", "network"])
     parser.add_argument("--discount-factor", type=float, default=0.98, help="The gamma discount factor for the value function")
-    parser.add_argument("--anneal_steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
-    parser.add_argument("--learning_rate", type=float, default=0.01, help="The learning rate for the optimizer")
-    parser.add_argument("--temp_start", type=float, default=0.5, help="The initial temperature of the annealing algorithm")
-    parser.add_argument("--temp_end", type=float, default=0.5, help="The final temperature of the annealing algorithm")
-    parser.add_argument("--clip_eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
-    parser.add_argument("--group_size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
-    parser.add_argument("--disable_group_initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size")
-    parser.add_argument("--batch_size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
-    parser.add_argument("--optim_steps", type=int, default=30, help="The number of optimization steps within each annealing step")
+    parser.add_argument("--anneal-steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
+    parser.add_argument("--learning-rate", type=float, default=0.01, help="The learning rate for the optimizer")
+    parser.add_argument("--temp-start", type=float, default=0.5, help="The initial temperature of the annealing algorithm")
+    parser.add_argument("--temp-end", type=float, default=0.5, help="The final temperature of the annealing algorithm")
+    parser.add_argument("--clip-eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
+    parser.add_argument("--group-size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
+    parser.add_argument("--disable-group-initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size")
+    parser.add_argument("--batch-size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
+    parser.add_argument("--optim-steps", type=int, default=30, help="The number of optimization steps within each annealing step")
 
     # Validation arguments
     parser.add_argument("--render", action="store_true", help="Create various visualizations of the training process into `runs/` directory")
 
     # Experiment arguments
-    parser.add_argument("--num_runs", type=int, default=1, help="Number of experiment runs to perform")
+    parser.add_argument("--num-runs", type=int, default=1, help="Number of experiment runs to perform")
     args = parser.parse_args()
     # fmt: on
 
