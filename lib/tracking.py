@@ -162,6 +162,9 @@ class RenderEpisodes:
         self.last_frame = None
         self.dimensions_set = False
         
+        # Keep track of the last valid frames for each environment
+        self.last_valid_frames = [None] * batch_size
+        
         if render_path is not None:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             os.makedirs(render_path.parent, exist_ok=True)
@@ -182,8 +185,9 @@ class RenderEpisodes:
             for _ in range(30):
                 self.video_writer.write(self.last_frame)
         
-        # Reset accumulated rewards
+        # Reset accumulated rewards and last valid frames
         self.accumulated_rewards = np.zeros(self.batch_size)
+        self.last_valid_frames = [None] * self.batch_size
     
     def step(self, envs, rewards, valid_mask):
         """
@@ -245,22 +249,57 @@ class RenderEpisodes:
             
             # Only process this slot if it's within batch_size
             if i < len(renders):
-                render = renders[i].copy()
+                # For valid environments, use the current render
+                # For invalid environments, use the last valid render
+                if valid_mask[i]:
+                    render = renders[i].copy()
+                    self.last_valid_frames[i] = render.copy()
+                else:
+                    # If this environment has just terminated, save its last valid frame
+                    if self.last_valid_frames[i] is None and i < len(renders):
+                        self.last_valid_frames[i] = renders[i].copy()
+                    
+                    # Use the last valid frame if available
+                    if self.last_valid_frames[i] is not None:
+                        render = self.last_valid_frames[i].copy()
+                    else:
+                        # If no last valid frame exists (shouldn't happen), use current frame
+                        render = renders[i].copy()
+                    
+                    # Apply gray effect
+                    gray_render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
+                    render = cv2.cvtColor(gray_render, cv2.COLOR_GRAY2RGB)
+                    
+                    # Add red overlay with 20% opacity
+                    red_overlay = np.zeros_like(render)
+                    red_overlay[:, :] = [255, 0, 0]  # Red color
+                    alpha = 0.2  # 20% opacity
+                    render = cv2.addWeighted(render, 1 - alpha, red_overlay, alpha, 0)
                 
-                # Gray out terminated environments
-                if not valid_mask[i]:
-                    render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
-                    render = cv2.cvtColor(render, cv2.COLOR_GRAY2RGB)
-                
-                # Add accumulated reward text
+                # Add accumulated reward text (in the bottom-right corner)
                 reward_text = f"R: {self.accumulated_rewards[i]:.1f}"
+                text_size = cv2.getTextSize(reward_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
+                text_x = self.sample_width - text_size[0] - 10
+                text_y = self.sample_height - 10
+                
+                # Add a dark background for the text to be more visible
+                text_bg_pad = 5
+                cv2.rectangle(
+                    render,
+                    (text_x - text_bg_pad, text_y - text_size[1] - text_bg_pad),
+                    (text_x + text_size[0] + text_bg_pad, text_y + text_bg_pad),
+                    (0, 0, 0),
+                    -1  # Fill
+                )
+                
+                # Draw the text
                 cv2.putText(
                     render, 
                     reward_text, 
-                    (10, 20), 
+                    (text_x, text_y), 
                     cv2.FONT_HERSHEY_SIMPLEX, 
                     0.5, 
-                    (255, 255, 255), 
+                    (255, 255, 255),  # White
                     1, 
                     cv2.LINE_AA
                 )
