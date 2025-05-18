@@ -20,20 +20,20 @@ from lib.tracking import get_git_info, save_run
 def main(args: Namespace) -> None:
     timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
     git_info = get_git_info()
-    run_path = Path(__file__).parent.parent / "runs" / timestamp / "experiment.json"
+    run_path = Path(__file__).parent.parent / "runs" / timestamp
 
     all_step_rewards: list[list[float]] = []
-    for _ in range(args.num_runs):
-        print(f"Running experiment {_ + 1} of {args.num_runs}:")
-        step_rewards = run_experiment(args)
+    for run in range(args.num_runs):
+        print(f"Running experiment {run + 1} of {args.num_runs}:")
+        step_rewards = run_experiment(args, run_path / f"{run:03d}")
         all_step_rewards.append(step_rewards)
         print()
 
-    save_run(run_path, args, git_info, all_step_rewards)
+    save_run(run_path / "experiment.json", args, git_info, all_step_rewards)
 
 
-def run_experiment(args: Namespace) -> list[float]:
-    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render=args.render)
+def run_experiment(args: Namespace, run_path: Path) -> list[float]:
+    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render_path=args.render)
 
     # Initialize policy model and optionally a value model
     # Use common optimizer for both models

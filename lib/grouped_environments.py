@@ -1,5 +1,6 @@
 import random
 import warnings
+from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
@@ -20,7 +21,7 @@ class GroupedEnvironments:
         enable_group_initialization: bool = True,
         seed: int | None = None,
         max_steps: int | None = None,
-        render: bool = False,
+        render_path: Path | None = None,
     ):
         assert group_size > 0 and batch_size > 0, "Group size and batch size must be positive"
         assert batch_size % group_size == 0, "Batch size must be divisible by group size"
