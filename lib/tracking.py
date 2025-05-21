@@ -330,9 +330,9 @@ class RenderValue:
         self.episode_length = self._get_episode_length(valid_mask)
 
         # Storage for annealing equation components
-        self.lhs_values = []
-        self.rhs_values = []
-        self.discrepancy_values = []
+        self.lhs_values: list[torch.Tensor] = []
+        self.rhs_values: list[torch.Tensor] = []
+        self.discrepancy_values: list[torch.Tensor] = []
 
         # Create subplots with 4 rows
         self.fig = make_subplots(
@@ -343,7 +343,7 @@ class RenderValue:
         )
 
         # Storage for animation frames
-        self.frames = []
+        self.frames: list[dict[str, Any]] = []
         self.step_count = 0
 
         # Track min/max values for y-axis scaling
@@ -588,7 +588,7 @@ class RenderValue:
             ]
 
             # Create animation frame
-            animation_frame = {"data": [], "name": f"Step {frame['step']}"}
+            animation_frame: dict[str, Any] = {"data": [], "name": f"Step {frame['step']}"}
 
             # Add traces to animation frame with proper subplot placement
             for trace, row, col in frame_traces:
