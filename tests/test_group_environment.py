@@ -36,10 +36,16 @@ def test_valid_and_reward_accumulation():
         sum_rewards += rewards
     assert done
 
-    # Test that done mask is False for all environments at the first step and True for all environments at the last step
-    valid_mask = env.get_valid_mask()
-    assert valid_mask[:, 0].all()
-    assert torch.logical_not(valid_mask[:, steps].all())
+    # Test that terminated and truncated masks are initialized correctly
+    terminated_mask = env.get_terminated_mask()
+    truncated_mask = env.get_truncated_mask()
+
+    # Test that all environments are valid at the first step
+    assert not terminated_mask[:, 0].any()
+    assert not truncated_mask[:, 0].any()
+
+    # Test that all environments are either terminated or truncated at the last step
+    assert torch.logical_or(terminated_mask[:, steps], truncated_mask[:, steps]).all()
 
     # Test that rewards are accumulated
     assert sum_rewards.shape == (batch_size,)

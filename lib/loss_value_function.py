@@ -5,7 +5,8 @@ def value_annealing_loss(
     policy_output: torch.Tensor,
     values: torch.Tensor,
     actions: torch.Tensor,
-    valid_mask: torch.Tensor,
+    terminated_mask: torch.Tensor,
+    truncated_mask: torch.Tensor,
     rewards: torch.Tensor,
     temperature: float,
     discount_factor: float,
@@ -19,12 +20,14 @@ def value_annealing_loss(
     2) value[batch, step] = 0 if valid_mask[batch, step] == 0 (value is 0 after the episode ended)
 
     We assume that the valid_mask is 0 for the last step in any episode.
+    The valid_mask is calculated as: not (terminated_mask OR truncated_mask)
 
     Args:
         policy_output: The output of the policy model (batch_size, steps, num_actions)
         value_output: The output of the value model (batch_size, steps)
         actions: The actions (batch_size, steps)
-        valid_mask: The valid mask (batch_size, steps)
+        terminated_mask: The terminated mask (batch_size, steps)
+        truncated_mask: The truncated mask (batch_size, steps)
         rewards: The rewards (batch_size, steps)
         temperature: The temperature for the Boltzmann distribution
         discount_factor: The discount factor for the value function
@@ -33,6 +36,7 @@ def value_annealing_loss(
         The annealing loss, comparing the value output history to the policy probabilities and rewards.
         The debug data contains the selected log probabilities, the values, the left-hand side and the right-hand side of the equation.
     """
+    valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
     batch_size, steps, num_actions = policy_output.shape
 
     # Compute output and target log-probabilities (batch_size, steps)

@@ -56,8 +56,10 @@ class GroupedEnvironments:
         """
         Resets the environments with identical seeds within each group.
         """
-        self.valid_masks: list[np.ndarray] = []
-        self.current_valid_mask = np.ones(self.batch_size, dtype=np.bool_)
+        self.terminated_masks: list[np.ndarray] = []
+        self.truncated_masks: list[np.ndarray] = []
+        self.current_terminated_mask = np.zeros(self.batch_size, dtype=np.bool_)
+        self.current_truncated_mask = np.zeros(self.batch_size, dtype=np.bool_)
         self.current_step = 0
 
         seeding_group_size = self.group_size if self.enable_group_initialization else 1
@@ -86,24 +88,35 @@ class GroupedEnvironments:
         actions_np = actions.cpu().numpy()
         obs, rewards, termination_mask, truncation_mask, infos = self.envs.step(actions_np)
 
-        self.valid_masks.append(self.current_valid_mask)
-        truncations = np.logical_or(termination_mask, truncation_mask)
-        self.current_valid_mask = np.logical_and(self.current_valid_mask, np.logical_not(truncations))
+        self.terminated_masks.append(self.current_terminated_mask)
+        self.truncated_masks.append(self.current_truncated_mask)
+        self.current_terminated_mask = np.logical_or(self.current_terminated_mask, termination_mask)
+        self.current_truncated_mask = np.logical_or(self.current_truncated_mask, truncation_mask)
+        current_valid_mask = np.logical_not(np.logical_or(self.current_terminated_mask, self.current_truncated_mask))
 
-        done = not bool(self.current_valid_mask.any())
-        self.render.step(self.envs, rewards * self.valid_masks[-1], self.valid_masks[-1])  # Regular rendering
+        # Check if all environments are done
+        done = not bool(current_valid_mask.any())
+
+        render_valid_mask = np.logical_not(np.logical_or(self.terminated_masks[-1], self.truncated_masks[-1]))
+        self.render.step(self.envs, rewards * render_valid_mask, render_valid_mask)  # Regular rendering
+
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
         if done:
-            self.render.step(self.envs, rewards * self.current_valid_mask, self.current_valid_mask)  # Show that all environments are done
+            self.render.step(self.envs, rewards * current_valid_mask, current_valid_mask)  # Show that all environments are done
         self.current_step += 1
 
-        return self._transform_observation(obs), self._transform_rewards(rewards, self.valid_masks[-1]), done
+        return self._transform_observation(obs), self._transform_rewards(rewards, render_valid_mask), done
 
-    def get_valid_mask(self) -> torch.Tensor:
+    def get_terminated_mask(self) -> torch.Tensor:
         # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
-        valid_masks = np.array(self.valid_masks).T
-        return torch.from_numpy(valid_masks).to(torch.bool)
+        terminated_masks = np.array(self.terminated_masks).T
+        return torch.from_numpy(terminated_masks).to(torch.bool)
+
+    def get_truncated_mask(self) -> torch.Tensor:
+        # (num_environment_steps, batch_size) -> (batch_size, num_environment_steps)
+        truncated_masks = np.array(self.truncated_masks).T
+        return torch.from_numpy(truncated_masks).to(torch.bool)
 
     def _transform_observation(self, obs: np.ndarray) -> torch.Tensor:
         """

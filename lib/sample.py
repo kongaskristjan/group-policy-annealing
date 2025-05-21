@@ -3,14 +3,17 @@ import torch
 from lib.grouped_environments import GroupedEnvironments
 
 
-def sample_batch_episode(policy: torch.nn.Module, envs: GroupedEnvironments) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def sample_batch_episode(
+    policy: torch.nn.Module, envs: GroupedEnvironments
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Sample actions from the policy model in the given environment.
     Returns:
         - observations: Tensor of observations (batch_size, steps, num_observations)
         - actions: Tensor of sampled actions (batch_size, steps)
         - rewards: Tensor of rewards from the environment (batch_size, steps)
-        - valid_mask: Tensor of valid masks (batch_size, steps)
+        - terminated_mask: Tensor of terminated masks (batch_size, steps)
+        - truncated_mask: Tensor of truncated masks (batch_size, steps)
     """
     with torch.no_grad():
         # Reset the environment to start a new episode
@@ -33,8 +36,9 @@ def sample_batch_episode(policy: torch.nn.Module, envs: GroupedEnvironments) -> 
             actions.append(cur_actions)
             rewards.append(cur_rewards)
 
-        # Get the valid mask from the environment
-        valid_mask = envs.get_valid_mask()  # (batch_size, steps)
+        # Get the terminated and truncated masks from the environment
+        terminated_mask = envs.get_terminated_mask()  # (batch_size, steps)
+        truncated_mask = envs.get_truncated_mask()  # (batch_size, steps)
 
         # Transpose the rewards, actions and probs (steps, batch_size) -> (batch_size, steps)
         observations_t = torch.stack(observations, dim=1)  # (batch_size, steps, num_observations)
@@ -45,6 +49,7 @@ def sample_batch_episode(policy: torch.nn.Module, envs: GroupedEnvironments) -> 
         observations_t = torch.cat([observations_t, torch.zeros_like(observations_t[:, :1])], dim=1)
         actions_t = torch.cat([actions_t, torch.zeros_like(actions_t[:, :1])], dim=1)
         rewards_t = torch.cat([rewards_t, torch.zeros_like(rewards_t[:, :1])], dim=1)
-        valid_mask = torch.cat([valid_mask, torch.zeros_like(valid_mask[:, :1])], dim=1)
+        terminated_mask = torch.cat([terminated_mask, torch.ones_like(terminated_mask[:, :1])], dim=1)
+        truncated_mask = torch.cat([truncated_mask, torch.zeros_like(truncated_mask[:, :1])], dim=1)
 
-    return observations_t, actions_t, rewards_t, valid_mask
+    return observations_t, actions_t, rewards_t, terminated_mask, truncated_mask

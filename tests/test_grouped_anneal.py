@@ -15,7 +15,8 @@ def test_anneal_batch_episode_simple():
     observations = torch.Tensor([[[-0.5]], [[0.5]]])  # 2 trajectories, 1 step, 1 observation
     actions = torch.zeros(2, 1, dtype=torch.long)  # Both take action 0
     rewards = torch.tensor([[1.0], [0.0]])  # First trajectory gets reward 1.0, second gets 0.0
-    valid_mask = torch.tensor([[True], [True]])  # Both trajectories are valid
+    terminated_mask = torch.tensor([[False], [False]])  # Neither trajectory is terminated
+    truncated_mask = torch.tensor([[False], [False]])  # Neither trajectory is truncated
 
     # Setup optimizer with higher learning rate
     optimizer = torch.optim.Adam(policy.parameters(), lr=0.05)
@@ -26,7 +27,8 @@ def test_anneal_batch_episode_simple():
         observations=observations,
         actions=actions,
         rewards=rewards,
-        valid_mask=valid_mask,
+        terminated_mask=terminated_mask,
+        truncated_mask=truncated_mask,
         optimizer=optimizer,
         temperature=1.0,  # Lower temperature makes the reward difference more significant
         clip_eps=100.0,  # No clipping
@@ -56,7 +58,10 @@ def test_gradient_direction_and_symmetry():
     output = torch.zeros(batch_size, 1, num_actions, requires_grad=True)
     actions = torch.tensor([[0], [0], [0], [0]], dtype=torch.long)
     rewards = torch.tensor([1.0, 0.0, 0.0, 1.0])  # Rewards: Group 1: [1, 0], Group 2: [0, 1] (reversed)
-    valid_mask = torch.tensor([[True], [True], [True], [True]])
+    # All environments are valid
+    terminated_mask = torch.tensor([[False], [False], [False], [False]])
+    truncated_mask = torch.tensor([[False], [False], [False], [False]])
+    valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
 
     target_log_probs = _compute_target_log_probs(rewards, 1.0, group_size)
     log_probs = torch.log_softmax(output, dim=2)
@@ -88,7 +93,11 @@ def test_masking_and_unpicked_gradients():
     softmax_output = torch.softmax(output, dim=2)
     actions = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)  # Traj 0: a0, a1; Traj 1: a1, a0
     rewards = torch.tensor([1.0, 0.0])
-    valid_mask = torch.tensor([[True, False], [True, True]])  # Valid Mask: Mask out step 1 of trajectory 0
+
+    # Create terminated and truncated masks that result in step 1 of trajectory 0 being invalid
+    terminated_mask = torch.tensor([[False, True], [False, False]])  # Traj 0 is terminated at step 1
+    truncated_mask = torch.tensor([[False, False], [False, False]])  # No truncations
+    valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
 
     target_log_probs = _compute_target_log_probs(rewards, 1.0, group_size)
     log_probs = torch.log(softmax_output)
@@ -115,7 +124,9 @@ def test_zero_loss_for_perfect_match():
     temperature = 3.0
     rewards = torch.tensor([13.0, 10.0])  # Reward difference: 3.0
     actions = torch.tensor([[0], [0]], dtype=torch.long)
-    valid_mask = torch.tensor([[True], [True]])
+    terminated_mask = torch.tensor([[False], [False]])
+    truncated_mask = torch.tensor([[False], [False]])
+    valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
 
     # Construct output logits such that logP(a0|traj0) - logP(a0|traj1) = 1.0
     # Let logP(a0|traj0) = 0. Requires softmax(logits0)[0] = 1. Use large logit diff.

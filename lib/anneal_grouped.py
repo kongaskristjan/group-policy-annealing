@@ -8,7 +8,8 @@ def anneal_grouped(
     observations: torch.Tensor,
     actions: torch.Tensor,
     rewards: torch.Tensor,
-    valid_mask: torch.Tensor,
+    terminated_mask: torch.Tensor,
+    truncated_mask: torch.Tensor,
     optimizer: torch.optim.Optimizer,
     temperature: float,
     clip_eps: float,
@@ -23,7 +24,8 @@ def anneal_grouped(
         observations: Tensor of observations (batch_size, steps, num_observations)
         actions: Tensor of actions the policy model took (batch_size, steps)
         rewards: Tensor of rewards (batch_size, steps)
-        valid_mask: Tensor of valid masks (batch_size, steps)
+        terminated_mask: Tensor of terminated masks (batch_size, steps)
+        truncated_mask: Tensor of truncated masks (batch_size, steps)
         optimizer: The optimizer to use for the annealing.
         temperature: The temperature to use for the annealing.
         clip_eps: The clipping epsilon for the policy.
@@ -40,7 +42,9 @@ def anneal_grouped(
     observations = observations.to(device)
     actions = actions.to(device)
     rewards = rewards.to(device)
-    valid_mask = valid_mask.to(device)
+    terminated_mask = terminated_mask.to(device)
+    truncated_mask = truncated_mask.to(device)
+    valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
 
     rewards = torch.sum(rewards * valid_mask, dim=1)  # (batch_size,)
     clipped_target_log_probs = clip_target_log_probs(policy, observations, actions, rewards, valid_mask, temperature, group_size, clip_eps)

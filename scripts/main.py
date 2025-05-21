@@ -51,7 +51,8 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
 
         # Sample batch
-        observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
+        observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(policy, envs)
+        valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
 
         # Render first observation
         if args.render in ["plots", "full"] and value is not None:
@@ -64,10 +65,10 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
 
         # Anneal
         if args.value_model == "grouped":
-            loss = anneal_grouped(policy, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
+            loss = anneal_grouped(policy, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
         else:
             anneal_render_path = run_path / "value_over_steps" / f"{step:03d}.html" if args.render in ["plots", "full"] else None
-            loss = anneal_value_function(policy, value, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps, anneal_render_path)  # fmt: skip
+            loss = anneal_value_function(policy, value, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps, anneal_render_path)  # fmt: skip
 
         # Log stats
         total_samples = step * len(observations)

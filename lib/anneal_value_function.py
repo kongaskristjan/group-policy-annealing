@@ -12,7 +12,8 @@ def anneal_value_function(
     observations: torch.Tensor,
     actions: torch.Tensor,
     rewards: torch.Tensor,
-    valid_mask: torch.Tensor,
+    terminated_mask: torch.Tensor,
+    truncated_mask: torch.Tensor,
     optimizer: torch.optim.Optimizer,
     temperature: float,
     clip_eps: float,
@@ -29,7 +30,8 @@ def anneal_value_function(
         observations: Tensor of observations (batch_size, steps, num_observations)
         actions: Tensor of actions the policy model took (batch_size, steps)
         rewards: Tensor of rewards (batch_size, steps)
-        valid_mask: Tensor of valid masks (batch_size, steps)
+        terminated_mask: Tensor of terminated masks (batch_size, steps)
+        truncated_mask: Tensor of truncated masks (batch_size, steps)
         optimizer: The optimizer to use for the annealing.
         temperature: The temperature to use for the annealing.
         clip_eps: The clipping epsilon for the policy.
@@ -46,7 +48,8 @@ def anneal_value_function(
     observations = observations.to(device)
     actions = actions.to(device)
     rewards = rewards.to(device)
-    valid_mask = valid_mask.to(device)
+    terminated_mask = terminated_mask.to(device)
+    truncated_mask = truncated_mask.to(device)
 
     # Clipping (currently outdated and not used for simplicity)
     # with torch.no_grad():
@@ -64,7 +67,8 @@ def anneal_value_function(
     losses = []
     render: RenderValue | None = None
     if render_path is not None:
-        render = RenderValue("Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], valid_mask[0])
+        first_obs_valid_mask = torch.logical_not(torch.logical_or(terminated_mask[0], truncated_mask[0]))
+        render = RenderValue("Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], first_obs_valid_mask)
         render.update(policy, value, temperature, discount_factor)
 
     for _ in range(optim_steps):
@@ -74,7 +78,9 @@ def anneal_value_function(
         policy_output = policy_output.view(batch_size, steps, -1)
         value_output = value_output.view(batch_size, steps)
 
-        current_loss, debug_data = value_annealing_loss(policy_output, value_output, actions, valid_mask, rewards, temperature, discount_factor)
+        current_loss, debug_data = value_annealing_loss(
+            policy_output, value_output, actions, terminated_mask, truncated_mask, rewards, temperature, discount_factor
+        )
         current_loss.backward()
         optimizer.step()
         losses.append(current_loss.item())
