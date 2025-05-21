@@ -325,60 +325,61 @@ class RenderValue:
         self.actions = actions
         self.rewards = rewards
         self.valid_mask = valid_mask
-        
+
         # Find the episode length (where valid_mask changes from True to False)
         self.episode_length = self._get_episode_length(valid_mask)
-        
-        # Create subplots with 3 rows
+
+        # Storage for annealing equation components
+        self.lhs_values = []
+        self.rhs_values = []
+        self.discrepancy_values = []
+
+        # Create subplots with 4 rows
         self.fig = make_subplots(
-            rows=3, 
-            cols=1, 
-            subplot_titles=["Value Function", "Rewards", "Action Probabilities"],
-            vertical_spacing=0.1
+            rows=4,
+            cols=1,
+            subplot_titles=["Action Probabilities", "Rewards", "Value Function", "Annealing Equation Components"],
+            vertical_spacing=0.1,
         )
-        
+
         # Storage for animation frames
         self.frames = []
         self.step_count = 0
-        
+
         # Track min/max values for y-axis scaling
-        self.min_value = float('inf')
-        self.max_value = float('-inf')
-        self.min_reward = float('inf')
-        self.max_reward = float('-inf')
-        
+        self.min_value = float("inf")
+        self.max_value = float("-inf")
+        self.min_reward = float("inf")
+        self.max_reward = float("-inf")
+        self.min_equation = float("inf")
+        self.max_equation = float("-inf")
+
         # Set up figure with initial state
-        self.fig.update_layout(
-            title=title,
-            width=800,
-            height=900,  # Increased height for three subplots
-            showlegend=True
-        )
-    
+        self.fig.update_layout(title=title, width=800, height=1200, showlegend=True)  # Increased height for four subplots
+
     def _get_episode_length(self, mask: torch.Tensor) -> int:
         """
         Find the episode length by identifying where valid_mask changes from True to False.
         If all values are True, returns the full length.
-        
+
         Args:
             mask: The valid_mask tensor
-            
+
         Returns:
             The episode length
         """
         # If all values are True, return the full length
         if all(mask):
             return len(mask)
-            
+
         # Find the first False value
         for i in range(len(mask)):
             if not mask[i]:
                 return i
-                
+
         # If we didn't find any False values, return the full length
         return len(mask)
-        
-        
+
     def update(self, policy: torch.nn.Module, value: torch.nn.Module, temp: float, discount_factor: float) -> None:
         """
         Store new frame of the animation with new policy and value functions.
@@ -392,34 +393,74 @@ class RenderValue:
         """
         # Generate values
         with torch.no_grad():
-            # Get value predictions
-            value_preds = value(self.observations).squeeze().detach().cpu().numpy()
-            
-            # Get policy outputs and convert to probabilities
+            # Get value predictions and keep as tensor for equation calculations
+            value_preds_tensor = value(self.observations).squeeze().detach()
+            value_preds = value_preds_tensor.cpu().numpy()
+
+            # Get policy outputs for calculation
             policy_outputs = policy(self.observations)
+
+            # Calculate the annealing equation components
+            # Compute log-probabilities (similar to value_annealing_loss function)
+            log_probs = torch.log_softmax(policy_outputs, dim=1)
+            selected_log_probs = torch.gather(log_probs, dim=1, index=self.actions.long().unsqueeze(1)).squeeze(1)
+
+            # Apply rule: value is 0 after the episode ended
+            values_masked = value_preds_tensor * self.valid_mask
+
+            # Prepare V(s_{t+1})
+            next_values = torch.cat([values_masked[1:], torch.zeros(1, device=values_masked.device)])
+
+            # Left-hand side (LHS) of equation
+            lhs = selected_log_probs * temp
+
+            # Right-hand side (RHS) of equation
+            value_target_difference = (discount_factor * next_values) - values_masked
+            rhs = value_target_difference + self.rewards
+
+            # Calculate the discrepancy
+            discrepancy = lhs - rhs
+
+            # Store the values for this step
+            self.lhs_values.append(lhs.detach().cpu().numpy())
+            self.rhs_values.append(rhs.detach().cpu().numpy())
+            self.discrepancy_values.append(discrepancy.detach().cpu().numpy())
+
+            # Also calculate probabilities for the standard graph
             probs = torch.softmax(policy_outputs, dim=1).detach().cpu().numpy()
-            
+
             # Get probability of the actions that were actually taken
             action_indices = self.actions.long().cpu().numpy()
             taken_probs = np.array([probs[i, action_indices[i]] for i in range(len(self.observations))])
-        
+
         # Get rewards and valid mask as numpy arrays
         rewards = self.rewards.cpu().numpy()
-        
+
         # Only use the valid part of the episode (up to episode_length)
         valid_indices = list(range(self.episode_length))
-        
+
         # Get valid parts of data
-        valid_values = value_preds[:self.episode_length]
-        valid_rewards = rewards[:self.episode_length]
-        valid_probs = taken_probs[:self.episode_length]
-        
+        valid_values = value_preds[: self.episode_length]
+        valid_rewards = rewards[: self.episode_length]
+        valid_probs = taken_probs[: self.episode_length]
+
+        # Get valid parts of annealing equation components
+        valid_lhs = self.lhs_values[-1][: self.episode_length]
+        valid_rhs = self.rhs_values[-1][: self.episode_length]
+        valid_discrepancy = self.discrepancy_values[-1][: self.episode_length]
+
         # Update min/max values for y-axis scaling
         self.min_value = min(self.min_value, valid_values.min())
         self.max_value = max(self.max_value, valid_values.max())
         self.min_reward = min(self.min_reward, valid_rewards.min())
         self.max_reward = max(self.max_reward, valid_rewards.max())
-        
+
+        # Update min/max values for equation components
+        all_equation_values = np.concatenate([valid_lhs, valid_rhs, valid_discrepancy])
+        if len(all_equation_values) > 0:
+            self.min_equation = min(self.min_equation, np.min(all_equation_values))
+            self.max_equation = max(self.max_equation, np.max(all_equation_values))
+
         # Create a dictionary to store the frame data
         frame_data = {
             "step": self.step_count,
@@ -428,13 +469,16 @@ class RenderValue:
             "x": valid_indices,
             "values": valid_values,
             "rewards": valid_rewards,
-            "action_probs": valid_probs
+            "action_probs": valid_probs,
+            "lhs": valid_lhs,
+            "rhs": valid_rhs,
+            "discrepancy": valid_discrepancy,
         }
-        
+
         # Store the frame
         self.frames.append(frame_data)
         self.step_count += 1
-        
+
     def close(self) -> None:
         """
         Save the animated plot.
@@ -443,7 +487,7 @@ class RenderValue:
         if not self.frames:
             print("No frames to render.")
             return
-            
+
         # Create frames for animation
         animation_frames = []
         for frame in self.frames:
@@ -452,23 +496,23 @@ class RenderValue:
             values = frame["values"]
             rewards = frame["rewards"]
             action_probs = frame["action_probs"]
-            
+
             # Create traces for this frame
             frame_traces = []
-            
-            # Value trace (first/top subplot)
+
+            # Value trace (third subplot)
             value_trace = go.Scatter(
-                x=x, 
+                x=x,
                 y=values,
                 mode="lines+markers",
                 name="Predicted Values",
                 line=dict(color="blue"),
                 marker=dict(size=8),
                 showlegend=True,
-                legendgroup="values"
+                legendgroup="values",
             )
-            
-            # Reward trace (middle subplot)
+
+            # Reward trace (second subplot)
             reward_trace = go.Scatter(
                 x=x,
                 y=rewards,
@@ -477,10 +521,10 @@ class RenderValue:
                 line=dict(color="orange"),
                 marker=dict(size=8),
                 showlegend=True,
-                legendgroup="rewards"
+                legendgroup="rewards",
             )
-            
-            # Action probability trace (bottom subplot)
+
+            # Action probability trace (first subplot)
             prob_trace = go.Scatter(
                 x=x,
                 y=action_probs,
@@ -489,205 +533,233 @@ class RenderValue:
                 line=dict(color="purple"),
                 marker=dict(size=8),
                 showlegend=True,
-                legendgroup="probs"
+                legendgroup="probs",
             )
-            
+
+            # Get annealing equation components from the frame data
+            lhs = frame["lhs"]
+            rhs = frame["rhs"]
+            discrepancy = frame["discrepancy"]
+
+            # LHS (left-hand side) trace
+            lhs_trace = go.Scatter(
+                x=x,
+                y=lhs,
+                mode="lines+markers",
+                name="LHS (log_probs * temp)",
+                line=dict(color="green"),
+                marker=dict(size=8),
+                showlegend=True,
+                legendgroup="equation",
+            )
+
+            # RHS (right-hand side) trace
+            rhs_trace = go.Scatter(
+                x=x,
+                y=rhs,
+                mode="lines+markers",
+                name="RHS ((discount * next_value) - value + reward)",
+                line=dict(color="red"),
+                marker=dict(size=8),
+                showlegend=True,
+                legendgroup="equation",
+            )
+
+            # Discrepancy trace
+            discrepancy_trace = go.Scatter(
+                x=x,
+                y=discrepancy,
+                mode="lines+markers",
+                name="Discrepancy (LHS - RHS)",
+                line=dict(color="black", dash="dash"),
+                marker=dict(size=8),
+                showlegend=True,
+                legendgroup="equation",
+            )
+
             # Collect all traces with their corresponding subplot positions
             frame_traces = [
-                (value_trace, 1, 1),  # Values in row 1
+                (prob_trace, 1, 1),  # Probabilities in row 1
                 (reward_trace, 2, 1),  # Rewards in row 2
-                (prob_trace, 3, 1)    # Probabilities in row 3
+                (value_trace, 3, 1),  # Values in row 3
+                (lhs_trace, 4, 1),  # LHS in row 4
+                (rhs_trace, 4, 1),  # RHS in row 4
+                (discrepancy_trace, 4, 1),  # Discrepancy in row 4
             ]
-            
+
             # Create animation frame
             animation_frame = {"data": [], "name": f"Step {frame['step']}"}
-            
+
             # Add traces to animation frame with proper subplot placement
             for trace, row, col in frame_traces:
                 # Create a new trace with the same properties instead of using copy()
                 trace_dict = trace.to_plotly_json()
                 trace_dict.update({"xaxis": f"x{row}" if row > 1 else "x", "yaxis": f"y{row}" if row > 1 else "y"})
                 animation_frame["data"].append(trace_dict)
-            
+
             # Add frame title with current temperature and discount
             animation_frame["layout"] = {
                 "title": f"{self.title} - Step {frame['step']}, Temp: {frame['temp']:.4f}, Discount: {frame['discount']:.4f}"
             }
-            
+
             animation_frames.append(animation_frame)
-        
+
         # Create animation
         self.fig.frames = animation_frames
-        
+
         # Add initial traces (will be updated by frames)
         first_frame = self.frames[0]
         x = first_frame["x"]
         values = first_frame["values"]
         rewards = first_frame["rewards"]
         action_probs = first_frame["action_probs"]
-        
-        # Add value trace to the first (top) subplot
+        lhs = first_frame["lhs"]
+        rhs = first_frame["rhs"]
+        discrepancy = first_frame["discrepancy"]
+
+        # Add action probability trace to the first (top) subplot
         self.fig.add_trace(
-            go.Scatter(
-                x=x, 
-                y=values,
-                mode="lines+markers",
-                name="Predicted Values",
-                line=dict(color="blue"),
-                marker=dict(size=8)
-            ),
-            row=1, col=1
+            go.Scatter(x=x, y=action_probs, mode="lines+markers", name="Action Probabilities", line=dict(color="purple"), marker=dict(size=8)),
+            row=1,
+            col=1,
         )
-        
+
         # Add reward trace to the second (middle) subplot
         self.fig.add_trace(
-            go.Scatter(
-                x=x,
-                y=rewards,
-                mode="lines+markers",
-                name="Rewards",
-                line=dict(color="orange"),
-                marker=dict(size=8)
-            ),
-            row=2, col=1
+            go.Scatter(x=x, y=rewards, mode="lines+markers", name="Rewards", line=dict(color="orange"), marker=dict(size=8)), row=2, col=1
         )
-        
-        # Add action probability trace to the third (bottom) subplot
+
+        # Add value trace to the third subplot
+        self.fig.add_trace(
+            go.Scatter(x=x, y=values, mode="lines+markers", name="Predicted Values", line=dict(color="blue"), marker=dict(size=8)), row=3, col=1
+        )
+
+        # Add LHS trace to the fourth subplot
+        self.fig.add_trace(
+            go.Scatter(x=x, y=lhs, mode="lines+markers", name="LHS (log_probs * temp)", line=dict(color="green"), marker=dict(size=8)), row=4, col=1
+        )
+
+        # Add RHS trace to the fourth subplot
         self.fig.add_trace(
             go.Scatter(
-                x=x,
-                y=action_probs,
-                mode="lines+markers",
-                name="Action Probabilities",
-                line=dict(color="purple"),
-                marker=dict(size=8)
+                x=x, y=rhs, mode="lines+markers", name="RHS ((discount * next_value) - value + reward)", line=dict(color="red"), marker=dict(size=8)
             ),
-            row=3, col=1
+            row=4,
+            col=1,
         )
-        
+
+        # Add discrepancy trace to the fourth subplot
+        self.fig.add_trace(
+            go.Scatter(
+                x=x, y=discrepancy, mode="lines+markers", name="Discrepancy (LHS - RHS)", line=dict(color="black", dash="dash"), marker=dict(size=8)
+            ),
+            row=4,
+            col=1,
+        )
+
         # Add slider for navigation through steps
         steps = []
         for i, frame in enumerate(self.frames):
             step = {
                 "args": [
                     [f"Step {frame['step']}"],
-                    {
-                        "frame": {"duration": 300, "redraw": True},
-                        "mode": "immediate",
-                        "transition": {"duration": 300}
-                    }
+                    {"frame": {"duration": 300, "redraw": True}, "mode": "immediate", "transition": {"duration": 300}},
                 ],
                 "label": f"Step {frame['step']}",
-                "method": "animate"
+                "method": "animate",
             }
             steps.append(step)
-        
-        sliders = [{
-            "active": 0,
-            "yanchor": "top",
-            "xanchor": "left",
-            "currentvalue": {
-                "font": {"size": 16},
-                "prefix": "Annealing Step: ",
-                "visible": True,
-                "xanchor": "right"
-            },
-            "transition": {"duration": 300, "easing": "cubic-in-out"},
-            "pad": {"b": 10, "t": 50},
-            "len": 0.9,
-            "x": 0.1,
-            "y": 0,
-            "steps": steps
-        }]
-        
+
+        sliders = [
+            {
+                "active": 0,
+                "yanchor": "top",
+                "xanchor": "left",
+                "currentvalue": {"font": {"size": 16}, "prefix": "Annealing Step: ", "visible": True, "xanchor": "right"},
+                "transition": {"duration": 300, "easing": "cubic-in-out"},
+                "pad": {"b": 10, "t": 50},
+                "len": 0.9,
+                "x": 0.1,
+                "y": 0,
+                "steps": steps,
+            }
+        ]
+
         # Add play and pause buttons
-        updatemenus = [{
-            "buttons": [
-                {
-                    "args": [
-                        None, 
-                        {
-                            "frame": {"duration": 300, "redraw": True},
-                            "fromcurrent": True, 
-                            "transition": {"duration": 300}
-                        }
-                    ],
-                    "label": "Play",
-                    "method": "animate"
-                },
-                {
-                    "args": [
-                        [None], 
-                        {
-                            "frame": {"duration": 0, "redraw": True},
-                            "mode": "immediate",
-                            "transition": {"duration": 0}
-                        }
-                    ],
-                    "label": "Pause",
-                    "method": "animate"
-                }
-            ],
-            "direction": "left",
-            "pad": {"r": 10, "t": 87},
-            "showactive": False,
-            "type": "buttons",
-            "x": 0.1,
-            "xanchor": "right",
-            "y": 0,
-            "yanchor": "top"
-        }]
-        
+        updatemenus = [
+            {
+                "buttons": [
+                    {
+                        "args": [None, {"frame": {"duration": 300, "redraw": True}, "fromcurrent": True, "transition": {"duration": 300}}],
+                        "label": "Play",
+                        "method": "animate",
+                    },
+                    {
+                        "args": [[None], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate", "transition": {"duration": 0}}],
+                        "label": "Pause",
+                        "method": "animate",
+                    },
+                ],
+                "direction": "left",
+                "pad": {"r": 10, "t": 87},
+                "showactive": False,
+                "type": "buttons",
+                "x": 0.1,
+                "xanchor": "right",
+                "y": 0,
+                "yanchor": "top",
+            }
+        ]
+
         # Update layout with animation controls
-        self.fig.update_layout(
-            updatemenus=updatemenus,
-            sliders=sliders
-        )
-        
+        self.fig.update_layout(updatemenus=updatemenus, sliders=sliders)
+
         # Update axes labels and ranges
-        # First subplot - Value Function
+        # First subplot - Action Probabilities
         self.fig.update_xaxes(title_text="Step", row=1, col=1)
         self.fig.update_yaxes(
-            title_text="Value", 
-            row=1, 
+            title_text="Probability",
+            row=1,
             col=1,
-            # Set y-axis range with some padding
-            range=[
-                self.min_value - 0.1 * (self.max_value - self.min_value),
-                self.max_value + 0.1 * (self.max_value - self.min_value)
-            ]
+            # Fixed range from 0 to 1 for probabilities
+            range=[0, 1],
         )
-        
+
         # Second subplot - Rewards
         self.fig.update_xaxes(title_text="Step", row=2, col=1)
         self.fig.update_yaxes(
-            title_text="Reward", 
-            row=2, 
+            title_text="Reward",
+            row=2,
+            col=1,
+            # Set y-axis range with some padding
+            range=[self.min_reward - 0.1 * (self.max_reward - self.min_reward), self.max_reward + 0.1 * (self.max_reward - self.min_reward)],
+        )
+
+        # Third subplot - Value Function
+        self.fig.update_xaxes(title_text="Step", row=3, col=1)
+        self.fig.update_yaxes(
+            title_text="Value",
+            row=3,
+            col=1,
+            # Set y-axis range with some padding
+            range=[self.min_value - 0.1 * (self.max_value - self.min_value), self.max_value + 0.1 * (self.max_value - self.min_value)],
+        )
+
+        # Fourth subplot - Annealing Equation Components
+        self.fig.update_xaxes(title_text="Step", row=4, col=1)
+        self.fig.update_yaxes(
+            title_text="Value",
+            row=4,
             col=1,
             # Set y-axis range with some padding
             range=[
-                self.min_reward - 0.1 * (self.max_reward - self.min_reward),
-                self.max_reward + 0.1 * (self.max_reward - self.min_reward)
-            ]
+                self.min_equation - 0.1 * (self.max_equation - self.min_equation),
+                self.max_equation + 0.1 * (self.max_equation - self.min_equation),
+            ],
         )
-        
-        # Third subplot - Action Probabilities
-        self.fig.update_xaxes(title_text="Step", row=3, col=1)
-        self.fig.update_yaxes(
-            title_text="Probability", 
-            row=3, 
-            col=1,
-            # Fixed range from 0 to 1 for probabilities
-            range=[0, 1]
-        )
-        
+
         # Make sure the directory exists
         os.makedirs(self.render_path.parent, exist_ok=True)
-        
+
         # Save the figure to HTML
-        self.fig.write_html(
-            self.render_path,
-            include_plotlyjs="cdn",
-            full_html=True,
-            auto_open=False
-        )
+        self.fig.write_html(self.render_path, include_plotlyjs="cdn", full_html=True, auto_open=False)
