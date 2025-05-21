@@ -34,7 +34,7 @@ def main(args: Namespace) -> None:
 
 
 def run_experiment(args: Namespace, run_path: Path) -> list[float]:
-    render_path = run_path / "training.mp4" if args.render else None
+    render_path = run_path / "training.mp4" if args.render == "full" else None
     envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render_path=render_path)
 
     # Initialize policy model and optionally a value model
@@ -54,7 +54,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
 
         # Render first observation
-        if args.render and value is not None:
+        if args.render in ["plots", "full"] and value is not None:
             if render_first_obs is None:
                 first_obs_path = run_path / "first_observation_value.html"
                 render_first_obs = RenderValue(
@@ -66,7 +66,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         if args.value_model == "grouped":
             loss = anneal_grouped(policy, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
         else:
-            anneal_render_path = run_path / "value_over_steps" / f"{step:03d}.html" if args.render else None
+            anneal_render_path = run_path / "value_over_steps" / f"{step:03d}.html" if args.render in ["plots", "full"] else None
             loss = anneal_value_function(policy, value, observations, actions, rewards, valid_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps, anneal_render_path)  # fmt: skip
 
         # Log stats
@@ -107,7 +107,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--optim-steps", type=int, default=30, help="The number of optimization steps within each annealing step")
 
     # Validation arguments
-    parser.add_argument("--render", action="store_true", help="Create various visualizations of the training process into `runs/` directory")
+    parser.add_argument("--render", type=str, choices=["plots", "full"], help="Create visualizations of the training process: 'plots' for value plots only, 'full' for all visualizations")
 
     # Experiment arguments
     parser.add_argument("--num-runs", type=int, default=1, help="Number of experiment runs to perform")
