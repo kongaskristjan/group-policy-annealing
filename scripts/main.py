@@ -54,7 +54,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         observations, actions, rewards, valid_mask = sample_batch_episode(policy, envs)
 
         # Render first observation
-        if args.render:
+        if args.render and value is not None:
             if render_first_obs is None:
                 first_obs_path = run_path / "first_observation_value.html"
                 render_first_obs = RenderValue(
@@ -77,9 +77,10 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
-        
+
     # Close the first observation renderer if it was created
-    if render_first_obs is not None:
+    if render_first_obs is not None and value is not None:
+        render_first_obs.update(policy, value, args.temp_end, args.discount_factor)
         render_first_obs.close()
 
     return step_rewards
