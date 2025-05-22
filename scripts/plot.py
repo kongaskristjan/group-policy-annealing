@@ -1,5 +1,9 @@
-from argparse import ArgumentParser, Namespace
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
+
+from argparse import ArgumentParser, Namespace
 
 from lib.tracking import load_run, plot_percentiles
 
