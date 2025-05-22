@@ -48,6 +48,7 @@ def value_annealing_loss(
 
     # Prepare V(s_{t+1})
     next_values = torch.cat([values[:, 1:], torch.zeros_like(values[:, :1])], dim=1)
+    next_truncated_mask = torch.cat([truncated_mask[:, 1:], torch.zeros_like(truncated_mask[:, :1])], dim=1)
 
     # Equation (1) can be rewritten as:
     # loss_term = (selected_log_probs * temperature) - ((discount_factor * next_values_padded - current_values) + rewards)
@@ -61,7 +62,7 @@ def value_annealing_loss(
     rhs = value_target_difference + rewards
 
     # Calculate the squared discrepancy for each step
-    discrepancy = lhs - rhs
+    discrepancy = (lhs - rhs) * torch.logical_not(next_truncated_mask)
     squared_discrepancy = discrepancy.pow(2)
 
     # Mask the squared discrepancy: loss is 0 for invalid steps
