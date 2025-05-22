@@ -52,14 +52,19 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
 
         # Sample batch
         observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(policy, envs)
-        valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
 
         # Render first observation
         if args.render in ["plots", "full"] and value is not None:
             if render_first_obs is None:
                 first_obs_path = run_path / "first_observation_value.html"
                 render_first_obs = RenderValue(
-                    "First episode over annealing steps", first_obs_path, observations[0], actions[0], rewards[0], valid_mask[0]
+                    "First episode over annealing steps",
+                    first_obs_path,
+                    observations[0],
+                    actions[0],
+                    rewards[0],
+                    terminated_mask[0],
+                    truncated_mask[0],
                 )
             render_first_obs.update(policy, value, temp, args.discount_factor)
 
@@ -72,6 +77,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
 
         # Log stats
         total_samples = step * len(observations)
+        valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
         mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
         ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
         steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples)]"

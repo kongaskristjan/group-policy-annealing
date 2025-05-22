@@ -13,6 +13,8 @@ import torch
 from plotly.subplots import make_subplots
 from pydantic import BaseModel
 
+from lib.loss_value_function import value_annealing_loss
+
 
 class ExperimentRun(BaseModel):
     """Model for storing experiment run data."""
@@ -306,7 +308,14 @@ class RenderValue:
     """
 
     def __init__(
-        self, title: str, render_path: Path, observations: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, valid_mask: torch.Tensor
+        self,
+        title: str,
+        render_path: Path,
+        observations: torch.Tensor,
+        actions: torch.Tensor,
+        rewards: torch.Tensor,
+        terminated_mask: torch.Tensor,
+        truncated_mask: torch.Tensor,
     ):
         """
         Initialize the value renderer.
@@ -317,17 +326,19 @@ class RenderValue:
             observations: Observations from the batch
             actions: Actions from the batch
             rewards: Rewards from the batch
-            valid_mask: Mask indicating which steps are valid
+            terminated_mask: Mask indicating which steps are terminated
+            truncated_mask: Mask indicating which steps are truncated
         """
         self.title = title
         self.render_path = render_path
         self.observations = observations
         self.actions = actions
         self.rewards = rewards
-        self.valid_mask = valid_mask
+        self.terminated_mask = terminated_mask
+        self.truncated_mask = truncated_mask
 
         # Find the episode length (where valid_mask changes from True to False)
-        self.episode_length = self._get_episode_length(valid_mask)
+        self.episode_length = self._get_episode_length(terminated_mask, truncated_mask)
 
         # Storage for annealing equation components
         self.lhs_values: list[torch.Tensor] = []
@@ -357,28 +368,26 @@ class RenderValue:
         # Set up figure with initial state
         self.fig.update_layout(title=title, width=800, height=1200, showlegend=True)  # Increased height for four subplots
 
-    def _get_episode_length(self, mask: torch.Tensor) -> int:
+    def _get_episode_length(self, terminated_mask: torch.Tensor, truncated_mask: torch.Tensor) -> int:
         """
         Find the episode length by identifying where valid_mask changes from True to False.
         If all values are True, returns the full length.
 
         Args:
-            mask: The valid_mask tensor
+            terminated_mask: The terminated mask tensor
+            truncated_mask: The truncated mask tensor
 
         Returns:
             The episode length
         """
-        # If all values are True, return the full length
-        if all(mask):
-            return len(mask)
-
         # Find the first False value
-        for i in range(len(mask)):
-            if not mask[i]:
+        valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
+        for i in range(len(valid_mask)):
+            if not valid_mask[i]:
                 return i
 
         # If we didn't find any False values, return the full length
-        return len(mask)
+        return len(valid_mask)
 
     def update(self, policy: torch.nn.Module, value: torch.nn.Module, temp: float, discount_factor: float) -> None:
         """
@@ -394,44 +403,29 @@ class RenderValue:
         # Generate values
         with torch.no_grad():
             # Get value predictions and keep as tensor for equation calculations
-            value_preds_tensor = value(self.observations).squeeze().detach()
+            value_preds_tensor = value(self.observations).detach().squeeze(dim=-1)
             value_preds = value_preds_tensor.cpu().numpy()
 
             # Get policy outputs for calculation
             policy_outputs = policy(self.observations)
 
-            # Calculate the annealing equation components
-            # Compute log-probabilities (similar to value_annealing_loss function)
-            log_probs = torch.log_softmax(policy_outputs, dim=1)
-            selected_log_probs = torch.gather(log_probs, dim=1, index=self.actions.long().unsqueeze(1)).squeeze(1)
-
-            # Apply rule: value is 0 after the episode ended
-            values_masked = value_preds_tensor * self.valid_mask
-
-            # Prepare V(s_{t+1})
-            next_values = torch.cat([values_masked[1:], torch.zeros(1, device=values_masked.device)])
-
-            # Left-hand side (LHS) of equation
-            lhs = selected_log_probs * temp
-
-            # Right-hand side (RHS) of equation
-            value_target_difference = (discount_factor * next_values) - values_masked
-            rhs = value_target_difference + self.rewards
-
-            # Calculate the discrepancy
-            discrepancy = lhs - rhs
+            loss, (selected_log_probs, lhs, rhs, discrepancy) = value_annealing_loss(
+                policy_outputs.unsqueeze(dim=0),
+                value_preds_tensor.unsqueeze(dim=0),
+                self.actions.unsqueeze(dim=0),
+                self.terminated_mask.unsqueeze(dim=0),
+                self.truncated_mask.unsqueeze(dim=0),
+                self.rewards.unsqueeze(dim=0),
+                temp,
+                discount_factor,
+            )
 
             # Store the values for this step
-            self.lhs_values.append(lhs.detach().cpu().numpy())
-            self.rhs_values.append(rhs.detach().cpu().numpy())
-            self.discrepancy_values.append(discrepancy.detach().cpu().numpy())
+            self.lhs_values.append(lhs.detach().squeeze(dim=0).cpu().numpy())
+            self.rhs_values.append(rhs.detach().squeeze(dim=0).cpu().numpy())
+            self.discrepancy_values.append(discrepancy.detach().squeeze(dim=0).cpu().numpy())
 
-            # Also calculate probabilities for the standard graph
-            probs = torch.softmax(policy_outputs, dim=1).detach().cpu().numpy()
-
-            # Get probability of the actions that were actually taken
-            action_indices = self.actions.long().cpu().numpy()
-            taken_probs = np.array([probs[i, action_indices[i]] for i in range(len(self.observations))])
+            selected_probs = torch.exp(selected_log_probs).squeeze(dim=0).detach().cpu().numpy()
 
         # Get rewards and valid mask as numpy arrays
         rewards = self.rewards.cpu().numpy()
@@ -442,7 +436,7 @@ class RenderValue:
         # Get valid parts of data
         valid_values = value_preds[: self.episode_length]
         valid_rewards = rewards[: self.episode_length]
-        valid_probs = taken_probs[: self.episode_length]
+        valid_probs = selected_probs[: self.episode_length]
 
         # Get valid parts of annealing equation components
         valid_lhs = self.lhs_values[-1][: self.episode_length]
@@ -469,7 +463,7 @@ class RenderValue:
             "x": valid_indices,
             "values": valid_values,
             "rewards": valid_rewards,
-            "action_probs": valid_probs,
+            "selected_probs": valid_probs,
             "lhs": valid_lhs,
             "rhs": valid_rhs,
             "discrepancy": valid_discrepancy,
@@ -495,7 +489,7 @@ class RenderValue:
             x = frame["x"]
             values = frame["values"]
             rewards = frame["rewards"]
-            action_probs = frame["action_probs"]
+            selected_probs = frame["selected_probs"]
 
             # Create traces for this frame
             frame_traces = []
@@ -527,7 +521,7 @@ class RenderValue:
             # Action probability trace (first subplot)
             prob_trace = go.Scatter(
                 x=x,
-                y=action_probs,
+                y=selected_probs,
                 mode="lines+markers",
                 name="Action Probabilities",
                 line=dict(color="purple"),
@@ -612,14 +606,14 @@ class RenderValue:
         x = first_frame["x"]
         values = first_frame["values"]
         rewards = first_frame["rewards"]
-        action_probs = first_frame["action_probs"]
+        selected_probs = first_frame["selected_probs"]
         lhs = first_frame["lhs"]
         rhs = first_frame["rhs"]
         discrepancy = first_frame["discrepancy"]
 
         # Add action probability trace to the first (top) subplot
         self.fig.add_trace(
-            go.Scatter(x=x, y=action_probs, mode="lines+markers", name="Action Probabilities", line=dict(color="purple"), marker=dict(size=8)),
+            go.Scatter(x=x, y=selected_probs, mode="lines+markers", name="Action Probabilities", line=dict(color="purple"), marker=dict(size=8)),
             row=1,
             col=1,
         )

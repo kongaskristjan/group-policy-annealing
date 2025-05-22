@@ -67,8 +67,9 @@ def anneal_value_function(
     losses = []
     render: RenderValue | None = None
     if render_path is not None:
-        first_obs_valid_mask = torch.logical_not(torch.logical_or(terminated_mask[0], truncated_mask[0]))
-        render = RenderValue("Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], first_obs_valid_mask)
+        render = RenderValue(
+            "Render value over annealing steps", render_path, observations[0], actions[0], rewards[0], terminated_mask[0], truncated_mask[0]
+        )
         render.update(policy, value, temperature, discount_factor)
 
     for _ in range(optim_steps):

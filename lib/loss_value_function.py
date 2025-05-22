@@ -72,4 +72,4 @@ def value_annealing_loss(
     sum_valid_mask = valid_mask.sum()
     mean_loss = masked_squared_discrepancy.sum() / (sum_valid_mask + 1e-6)
 
-    return mean_loss, (selected_log_probs, values, lhs, rhs)
+    return mean_loss, (selected_log_probs, lhs, rhs, discrepancy)
