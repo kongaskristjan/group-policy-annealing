@@ -39,6 +39,8 @@ def sample_batch_episode(
         # Get the terminated and truncated masks from the environment
         terminated_mask = envs.get_terminated_mask()  # (batch_size, steps)
         truncated_mask = envs.get_truncated_mask()  # (batch_size, steps)
+        current_terminated_mask = envs.get_current_terminated_mask()  # (batch_size,)
+        current_truncated_mask = envs.get_current_truncated_mask()  # (batch_size,)
 
         # Transpose the rewards, actions and probs (steps, batch_size) -> (batch_size, steps)
         observations_t = torch.stack(observations, dim=1)  # (batch_size, steps, num_observations)
@@ -49,7 +51,7 @@ def sample_batch_episode(
         observations_t = torch.cat([observations_t, torch.zeros_like(observations_t[:, :1])], dim=1)
         actions_t = torch.cat([actions_t, torch.zeros_like(actions_t[:, :1])], dim=1)
         rewards_t = torch.cat([rewards_t, torch.zeros_like(rewards_t[:, :1])], dim=1)
-        terminated_mask = torch.cat([terminated_mask, torch.ones_like(terminated_mask[:, :1])], dim=1)
-        truncated_mask = torch.cat([truncated_mask, torch.zeros_like(truncated_mask[:, :1])], dim=1)
+        terminated_mask = torch.cat([terminated_mask, current_terminated_mask.unsqueeze(1)], dim=1)
+        truncated_mask = torch.cat([truncated_mask, current_truncated_mask.unsqueeze(1)], dim=1)
 
     return observations_t, actions_t, rewards_t, terminated_mask, truncated_mask

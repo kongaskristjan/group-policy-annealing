@@ -118,6 +118,12 @@ class GroupedEnvironments:
         truncated_masks = np.array(self.truncated_masks).T
         return torch.from_numpy(truncated_masks).to(torch.bool)
 
+    def get_current_terminated_mask(self) -> torch.Tensor:
+        return torch.from_numpy(self.current_terminated_mask).to(torch.bool)
+
+    def get_current_truncated_mask(self) -> torch.Tensor:
+        return torch.from_numpy(self.current_truncated_mask).to(torch.bool)
+
     def _transform_observation(self, obs: np.ndarray) -> torch.Tensor:
         """
         Returns the transformed observations for each environment in the batch.
