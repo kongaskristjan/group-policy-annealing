@@ -2,7 +2,7 @@ from pathlib import Path
 
 import torch
 
-from lib.loss_value_function import value_annealing_loss
+from lib.loss_value_function import value_direct_annealing_loss
 from lib.tracking import RenderValue
 
 
@@ -79,7 +79,7 @@ def anneal_value_function(
         policy_output = policy_output.view(batch_size, steps, -1)
         value_output = value_output.view(batch_size, steps)
 
-        current_loss, debug_data = value_annealing_loss(
+        current_loss, debug_data = value_direct_annealing_loss(
             policy_output, value_output, actions, terminated_mask, truncated_mask, rewards, temperature, discount_factor
         )
         current_loss.backward()

@@ -3,6 +3,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
+import os
 import math
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
@@ -39,12 +40,17 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
 
     # Initialize policy model and optionally a value model
     # Use common optimizer for both models
-    policy = get_model(envs.num_observations, envs.num_actions, hidden=[32])
-    value = get_model(envs.num_observations, 1, hidden=[32]) if args.value_model == "network" else None
+    policy = get_model(envs.num_observations, envs.num_actions, hidden=[32, 32])
+    value = get_model(envs.num_observations, 1, hidden=[32, 32]) if args.value_function in ["difference", "direct"] else None
+    if args.load_models is not None:
+        policy.load_state_dict(torch.load(Path(args.load_models) / "policy.pth"))
+        if value is not None:
+            value.load_state_dict(torch.load(Path(args.load_models) / "value.pth"))
     params = list(policy.parameters()) + (list(value.parameters()) if value is not None else [])
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+    optimizer = torch.optim.Adam(params, lr=args.learning_rate, betas=(0.5, 0.99))
 
     # Run annealing
+    total_timesteps = 0
     step_rewards: list[float] = []
     render_first_obs: RenderValue | None = None
     for step in range(args.anneal_steps):
@@ -69,21 +75,29 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
             render_first_obs.update(policy, value, temp, args.discount_factor)
 
         # Anneal
-        if args.value_model == "grouped":
+        if args.value_function == "grouped":
             loss = anneal_grouped(policy, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
         else:
             anneal_render_path = run_path / "value_over_steps" / f"{step:03d}.html" if args.render in ["plots", "full"] else None
             loss = anneal_value_function(policy, value, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps, anneal_render_path)  # fmt: skip
 
         # Log stats
+        total_timesteps += torch.sum(torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))).item()
         total_samples = step * len(observations)
         valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
         mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
         ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
-        steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples)]"
+        steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples) (timesteps {total_timesteps})]"
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
+
+        # Save models
+        step_path = run_path / "models" / f"{step:03d}"
+        os.makedirs(step_path, exist_ok=True)
+        torch.save(policy.state_dict(), step_path / "policy.pth")
+        if value is not None:
+            torch.save(value.state_dict(), step_path / "value.pth")
 
     # Close the first observation renderer if it was created
     if render_first_obs is not None and value is not None:
@@ -98,15 +112,15 @@ def parse_args() -> Namespace:
     parser = ArgumentParser()
 
     # Environment arguments
-    parser.add_argument("--env_name", type=str, default="CartPole-v1", help="The name of the environment to run")
+    parser.add_argument("--env-name", type=str, default="CartPole-v1", help="The name of the environment to run")
 
     # Optimization arguments
-    parser.add_argument("--value-model", type=str, default="grouped", help="The type of value function to use", choices=["grouped", "network"])
-    parser.add_argument("--discount-factor", type=float, default=0.98, help="The gamma discount factor for the value function")
+    parser.add_argument("--value-function", type=str, default="grouped", help="The type of value function to use", choices=["grouped", "difference", "direct"])
+    parser.add_argument("--discount-factor", type=float, default=0.985, help="The gamma discount factor for the value function")
     parser.add_argument("--anneal-steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
-    parser.add_argument("--learning-rate", type=float, default=0.01, help="The learning rate for the optimizer")
-    parser.add_argument("--temp-start", type=float, default=0.5, help="The initial temperature of the annealing algorithm")
-    parser.add_argument("--temp-end", type=float, default=0.5, help="The final temperature of the annealing algorithm")
+    parser.add_argument("--learning-rate", type=float, default=0.001, help="The learning rate for the optimizer")
+    parser.add_argument("--temp-start", type=float, default=2, help="The initial temperature of the annealing algorithm")
+    parser.add_argument("--temp-end", type=float, default=2, help="The final temperature of the annealing algorithm")
     parser.add_argument("--clip-eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
     parser.add_argument("--group-size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
     parser.add_argument("--disable-group-initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size")
@@ -117,12 +131,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--render", type=str, choices=["plots", "full"], help="Create visualizations of the training process: 'plots' for value plots only, 'full' for all visualizations")
 
     # Experiment arguments
+    parser.add_argument("--load-models", type=str, help="Load models from the given path")
     parser.add_argument("--num-runs", type=int, default=1, help="Number of experiment runs to perform")
     args = parser.parse_args()
     # fmt: on
 
     # Checks
-    if args.value_model == "network":
+    if args.value_function in ["difference", "direct"]:
         # Environments with same group have same seed, but we want different seeds for each environment
         print("Setting group size to 1 as value is modeled with a neural network")
         args.group_size = 1

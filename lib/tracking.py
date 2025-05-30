@@ -13,7 +13,7 @@ import torch
 from plotly.subplots import make_subplots
 from pydantic import BaseModel
 
-from lib.loss_value_function import value_annealing_loss
+from lib.loss_value_function import value_direct_annealing_loss
 
 
 class ExperimentRun(BaseModel):
@@ -409,7 +409,7 @@ class RenderValue:
             # Get policy outputs for calculation
             policy_outputs = policy(self.observations)
 
-            loss, (selected_log_probs, lhs, rhs, discrepancy) = value_annealing_loss(
+            loss, (selected_log_probs, lhs, rhs, discrepancy) = value_direct_annealing_loss(
                 policy_outputs.unsqueeze(dim=0),
                 value_preds_tensor.unsqueeze(dim=0),
                 self.actions.unsqueeze(dim=0),
@@ -540,7 +540,7 @@ class RenderValue:
                 x=x,
                 y=lhs,
                 mode="lines+markers",
-                name="LHS (log_probs * temp)",
+                name="LHS (value)",
                 line=dict(color="green"),
                 marker=dict(size=8),
                 showlegend=True,
@@ -552,7 +552,7 @@ class RenderValue:
                 x=x,
                 y=rhs,
                 mode="lines+markers",
-                name="RHS ((discount * next_value) - value + reward)",
+                name="RHS (target = discounted_sum(reward / T - log(probs)))",
                 line=dict(color="red"),
                 marker=dict(size=8),
                 showlegend=True,
