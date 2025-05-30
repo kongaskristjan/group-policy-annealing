@@ -10,6 +10,8 @@ import cv2
 import numpy as np
 import plotly.graph_objects as go
 import torch
+from gymnasium import Env
+from gymnasium.vector import VectorEnv
 from plotly.subplots import make_subplots
 from pydantic import BaseModel
 
@@ -123,7 +125,7 @@ class RenderEpisodes:
     Creates a grid layout of environments, all rendered simultaneously.
     """
 
-    def __init__(self, render_path: Optional[Path], batch_size: int, dummy_env):
+    def __init__(self, render_path: Optional[Path], batch_size: int, dummy_env: Env):
         """
         Initialize the episode renderer.
 
@@ -148,7 +150,7 @@ class RenderEpisodes:
         try:
             # Get render resolution from a sample - reset first to avoid OrderEnforcer error
             dummy_env.reset()
-            sample_render = dummy_env.render()
+            sample_render: np.ndarray = dummy_env.render()  # type: ignore
             self.sample_height, self.sample_width = sample_render.shape[:2]
         except Exception as e:
             print(f"Could not get render dimensions from dummy environment: {e}")
@@ -165,7 +167,7 @@ class RenderEpisodes:
         self.dimensions_set = False
 
         # Keep track of the last valid frames for each environment
-        self.last_valid_frames = [None] * batch_size
+        self.last_valid_frames: list[np.ndarray | None] = [None] * batch_size
 
         if render_path is not None:
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -186,14 +188,15 @@ class RenderEpisodes:
         self.accumulated_rewards = np.zeros(self.batch_size)
         self.last_valid_frames = [None] * self.batch_size
 
-    def step(self, envs, rewards, valid_mask):
+    def step(self, envs: VectorEnv, rewards: torch.Tensor, terminated_mask: torch.Tensor, truncated_mask: torch.Tensor):
         """
         Render the current state of all environments in the batch.
 
         Args:
             envs: The vectorized environments
             rewards: Rewards from the current step
-            valid_mask: Mask indicating which environments are still active
+            terminated_mask: Mask indicating which environments are terminated
+            truncated_mask: Mask indicating which environments are truncated
         """
         if self.video_writer is None:
             return
@@ -202,7 +205,7 @@ class RenderEpisodes:
         self.accumulated_rewards += rewards
 
         # Get renders from all environments
-        renders = envs.render()
+        renders: list[np.ndarray] = envs.render()  # type: ignore
 
         # If first render, check if we need to adjust dimensions and recreate video writer
         if not self.dimensions_set and renders is not None and len(renders) > 0:
@@ -243,10 +246,10 @@ class RenderEpisodes:
             if i < len(renders):
                 # For valid environments, use the current render
                 # For invalid environments, use the last valid render
-                if valid_mask[i]:
+                if not terminated_mask[i] and not truncated_mask[i]:  # Still active
                     render = renders[i].copy()
                     self.last_valid_frames[i] = render.copy()
-                else:
+                else:  # Terminated or truncated
                     # If this environment has just terminated, save its last valid frame
                     if self.last_valid_frames[i] is None and i < len(renders):
                         self.last_valid_frames[i] = renders[i].copy()
@@ -262,11 +265,14 @@ class RenderEpisodes:
                     gray_render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
                     render = cv2.cvtColor(gray_render, cv2.COLOR_GRAY2RGB)
 
-                    # Add red overlay with 20% opacity
-                    red_overlay = np.zeros_like(render)
-                    red_overlay[:, :] = [255, 0, 0]  # Red color
+                    # Add overlay with 20% opacity
+                    overlay = np.zeros_like(render)
+                    if terminated_mask[i]:
+                        overlay[:, :] = [255, 0, 0]  # Red color
+                    elif truncated_mask[i]:
+                        overlay[:, :] = [0, 255, 0]  # Green color
                     alpha = 0.2  # 20% opacity
-                    render = cv2.addWeighted(render, 1 - alpha, red_overlay, alpha, 0)
+                    render = cv2.addWeighted(render, 1 - alpha, overlay, alpha, 0)
 
                 # Add accumulated reward text (in the bottom-right corner)
                 reward_text = f"R: {self.accumulated_rewards[i]:.1f}"

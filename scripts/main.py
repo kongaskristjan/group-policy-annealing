@@ -53,8 +53,8 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
     total_timesteps = 0
     step_rewards: list[float] = []
     render_first_obs: RenderValue | None = None
-    for step in range(args.anneal_steps):
-        temp = get_temperature(args.temp_start, args.temp_end, step / args.anneal_steps)
+    for step in range(args.episode_batches):
+        temp = get_temperature(args.temp_start, args.temp_end, step / args.episode_batches)
 
         # Sample batch
         observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(policy, envs)
@@ -87,7 +87,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
         mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
         ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
-        steps_formatted = f"[{step}/{args.anneal_steps} ({total_samples} samples) (timesteps {total_timesteps})]"
+        steps_formatted = f"[{step}/{args.episode_batches} ({total_samples} samples) (timesteps {total_timesteps})]"
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
@@ -111,28 +111,25 @@ def parse_args() -> Namespace:
     # fmt: off
     parser = ArgumentParser()
 
-    # Environment arguments
-    parser.add_argument("--env-name", type=str, default="CartPole-v1", help="The name of the environment to run")
-
-    # Optimization arguments
-    parser.add_argument("--value-function", type=str, default="grouped", help="The type of value function to use", choices=["grouped", "difference", "direct"])
-    parser.add_argument("--discount-factor", type=float, default=0.985, help="The gamma discount factor for the value function")
-    parser.add_argument("--anneal-steps", type=int, default=100, help="The number of annealings to run (not related to environment steps)")
-    parser.add_argument("--learning-rate", type=float, default=0.001, help="The learning rate for the optimizer")
-    parser.add_argument("--temp-start", type=float, default=2, help="The initial temperature of the annealing algorithm")
-    parser.add_argument("--temp-end", type=float, default=2, help="The final temperature of the annealing algorithm")
-    parser.add_argument("--clip-eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping)")
-    parser.add_argument("--group-size", type=int, default=8, help="The number of environments in each group with identical environment seeds")
-    parser.add_argument("--disable-group-initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size")
-    parser.add_argument("--batch-size", type=int, default=32, help="Total number of environments to run in parallel (batch_size = group_size * (number of groups))")
-    parser.add_argument("--optim-steps", type=int, default=30, help="The number of optimization steps within each annealing step")
-
-    # Validation arguments
-    parser.add_argument("--render", type=str, choices=["plots", "full"], help="Create visualizations of the training process: 'plots' for value plots only, 'full' for all visualizations")
-
     # Experiment arguments
+    parser.add_argument("--env-name", type=str, default="CartPole-v1", help="The name of the environment to run")
     parser.add_argument("--load-models", type=str, help="Load models from the given path")
     parser.add_argument("--num-runs", type=int, default=1, help="Number of experiment runs to perform")
+    parser.add_argument("--render", type=str, choices=["plots", "full"], help="Create visualizations of the training process: 'plots' for value plots only, 'full' for all visualizations")
+
+    # Optimization arguments
+    parser.add_argument("--value-function", type=str, default="grouped", help="The type of value function to use. 'grouped' compares the rewards of trajectories with identically initialized environments. 'difference' and 'direct' use a value function.", choices=["grouped", "difference", "direct"])
+    parser.add_argument("--batch-size", type=int, default=32, help="Total number of environments to run in parallel. For 'grouped' value function, batch_size = group_size * (number of groups)")
+    parser.add_argument("--group-size", type=int, default=8, help="The number of environments in each group with identical environment seeds. Only applies to 'grouped' value function.")
+    parser.add_argument("--episode-batches", type=int, default=100, help="The number of episode batches to run")
+    parser.add_argument("--optim-steps", type=int, default=30, help="The number of optimization steps taken for each episode batch")
+    parser.add_argument("--temp-start", type=float, default=2, help="The initial temperature of the annealing algorithm")
+    parser.add_argument("--temp-end", type=float, default=2, help="The final temperature of the annealing algorithm")
+    parser.add_argument("--learning-rate", type=float, default=0.001, help="The learning rate for the optimizer")
+    parser.add_argument("--discount-factor", type=float, default=0.985, help="The gamma discount factor for the value function (only used for difference and direct value functions)")
+    parser.add_argument("--clip-eps", type=float, default=100000.0, help="The clipping epsilon for the policy (by default, no clipping). Currently only implemented for 'grouped' value function.")
+    parser.add_argument("--disable-group-initialization", action="store_true", help="Disables common seeds for each group. Sets group size to batch size")
+
     args = parser.parse_args()
     # fmt: on
 
