@@ -3,8 +3,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-import os
 import math
+import os
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
 

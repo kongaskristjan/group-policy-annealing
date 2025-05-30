@@ -1,4 +1,3 @@
-import random
 import math
 
 import torch
@@ -161,7 +160,9 @@ def value_direct_annealing_loss(
 
     # Handle truncation
     last_not_truncated = find_last_not_truncated(truncated_mask)  # (batch_size, steps)
-    target_contrib = torch.logical_not(last_not_truncated) * target_contrib + last_not_truncated * value_output / (1 - discount_factor)  # (batch_size, steps)
+    target_contrib = torch.logical_not(last_not_truncated) * target_contrib + last_not_truncated * value_output / (
+        1 - discount_factor
+    )  # (batch_size, steps)
 
     # Compute the discounted cumulative sum of the value contributions
     value_target = discount_cumsum(target_contrib, discount_factor, dim=1) * (1 - discount_factor)  # (batch_size, steps)
