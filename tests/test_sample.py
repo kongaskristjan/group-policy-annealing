@@ -12,16 +12,17 @@ def test_sample_batch_episode():
     envs = GroupedEnvironments("CartPole-v1", group_size, batch_size, seed=42)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[8])
 
-    # Sample actions
-    observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(model, envs)
+    for validate in [True, False]:
+        # Sample actions
+        observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(model, envs, validate=validate)
 
-    # Check the shapes of the tensors
-    steps = actions.shape[1]
-    assert observations.shape == (batch_size, steps, envs.num_observations)
-    assert actions.shape == (batch_size, steps)
-    assert rewards.shape == (batch_size, steps)
-    assert terminated_mask.shape == (batch_size, steps)
-    assert truncated_mask.shape == (batch_size, steps)
+        # Check the shapes of the tensors
+        steps = actions.shape[1]
+        assert observations.shape == (batch_size, steps, envs.num_observations)
+        assert actions.shape == (batch_size, steps)
+        assert rewards.shape == (batch_size, steps)
+        assert terminated_mask.shape == (batch_size, steps)
+        assert truncated_mask.shape == (batch_size, steps)
 
-    # Check that actions are valid
-    assert torch.all((actions >= 0) & (actions < envs.num_actions))
+        # Check that actions are valid
+        assert torch.all((actions >= 0) & (actions < envs.num_actions))

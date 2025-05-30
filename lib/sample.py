@@ -4,7 +4,7 @@ from lib.grouped_environments import GroupedEnvironments
 
 
 def sample_batch_episode(
-    policy: torch.nn.Module, envs: GroupedEnvironments
+    policy: torch.nn.Module, envs: GroupedEnvironments, validate: bool
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Sample actions from the policy model in the given environment.
@@ -30,7 +30,10 @@ def sample_batch_episode(
             # Sample an action from the model
             logits = policy(cur_observations)  # (batch_size, num_actions)
             cur_probs = torch.nn.functional.softmax(logits, dim=1)  # (batch_size, num_actions)
-            cur_actions = torch.multinomial(cur_probs, num_samples=1).squeeze(-1)  # (batch_size,)
+            if validate:
+                cur_actions = torch.argmax(cur_probs, dim=1)  # (batch_size,)
+            else:
+                cur_actions = torch.multinomial(cur_probs, num_samples=1).squeeze(-1)  # (batch_size,)
             cur_observations, cur_rewards, done = envs.step(cur_actions)  # (batch_size, num_observations), (batch_size), bool
 
             actions.append(cur_actions)

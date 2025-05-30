@@ -53,11 +53,11 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
     total_timesteps = 0
     step_rewards: list[float] = []
     render_first_obs: RenderValue | None = None
-    for step in range(args.episode_batches):
-        temp = get_temperature(args.temp_start, args.temp_end, step / args.episode_batches)
+    for step in range(args.num_episode_batches):
+        temp = get_temperature(args.temp_start, args.temp_end, step / args.num_episode_batches)
 
         # Sample batch
-        observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(policy, envs)
+        observations, actions, rewards, terminated_mask, truncated_mask = sample_batch_episode(policy, envs, args.validate)
 
         # Render first observation
         if args.render in ["plots", "full"] and value is not None:
@@ -76,10 +76,10 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
 
         # Anneal
         if args.value_function == "grouped":
-            loss = anneal_grouped(policy, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.group_size, args.optim_steps)  # fmt: skip
+            loss = anneal_grouped(policy, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.group_size, args.num_optim_steps)  # fmt: skip
         else:
             anneal_render_path = run_path / "value_over_steps" / f"{step:03d}.html" if args.render in ["plots", "full"] else None
-            loss = anneal_value_function(policy, value, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.optim_steps, anneal_render_path)  # fmt: skip
+            loss = anneal_value_function(policy, value, observations, actions, rewards, terminated_mask, truncated_mask, optimizer, temp, args.clip_eps, args.discount_factor, args.num_optim_steps, anneal_render_path)  # fmt: skip
 
         # Log stats
         total_timesteps += torch.sum(torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))).item()
@@ -87,7 +87,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
         mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
         ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
-        steps_formatted = f"[{step}/{args.episode_batches} ({total_samples} episodes) ({total_timesteps} timesteps)]"
+        steps_formatted = f"[{step}/{args.num_episode_batches} ({total_samples} episodes) ({total_timesteps} timesteps)]"
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
@@ -117,13 +117,14 @@ def parse_args() -> Namespace:
     parser.add_argument("--load-models", type=str, help="Load models from the given path")
     parser.add_argument("--num-runs", type=int, default=1, help="Number of experiment runs to perform")
     parser.add_argument("--render", type=str, choices=["plots", "full"], help="Create visualizations of the training process: 'plots' for value plots only, 'full' for all visualizations")
+    parser.add_argument("--validate", action="store_true", help="Validate: select actions with maximum probability, run for only one episode batch, don't optimize, don't group environments")
 
     # Optimization arguments
     parser.add_argument("--value-function", type=str, default="grouped", help="The type of value function to use. 'grouped' compares the rewards of trajectories with identically initialized environments. 'difference' and 'direct' use a value function.", choices=["grouped", "difference", "direct"])
     parser.add_argument("--batch-size", type=int, default=32, help="Total number of environments to run in parallel. For 'grouped' value function, batch_size = group_size * (number of groups)")
     parser.add_argument("--group-size", type=int, default=8, help="The number of environments in each group with identical environment seeds. Only applies to 'grouped' value function.")
-    parser.add_argument("--episode-batches", type=int, default=100, help="The number of episode batches to run")
-    parser.add_argument("--optim-steps", type=int, default=30, help="The number of optimization steps taken for each episode batch")
+    parser.add_argument("--num-episode-batches", type=int, default=100, help="The number of episode batches to run")
+    parser.add_argument("--num-optim-steps", type=int, default=30, help="The number of optimization steps taken for each episode batch")
     parser.add_argument("--temp-start", type=float, default=2, help="The initial temperature of the annealing algorithm")
     parser.add_argument("--temp-end", type=float, default=2, help="The final temperature of the annealing algorithm")
     parser.add_argument("--learning-rate", type=float, default=0.001, help="The learning rate for the optimizer")
@@ -138,6 +139,14 @@ def parse_args() -> Namespace:
     if args.value_function in ["difference", "direct"]:
         # Environments with same group have same seed, but we want different seeds for each environment
         print("Setting group size to 1 as value is modeled with a neural network")
+        args.group_size = 1
+        args.disable_group_initialization = True
+
+    if args.validate:
+        args.num_runs = 1
+        args.num_episode_batches = 1
+        args.num_optim_steps = 1  # For loss calculation
+        args.learning_rate = 0.0
         args.group_size = 1
         args.disable_group_initialization = True
 
