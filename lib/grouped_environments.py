@@ -1,4 +1,3 @@
-import atexit
 import random
 import warnings
 from pathlib import Path
@@ -46,11 +45,10 @@ class GroupedEnvironments:
 
         # Initialize renderer before reset, so it's available during the first reset
         self.render = RenderEpisodes(render_path, batch_size, dummy_env)
-
-        # Register cleanup on exit to ensure video resources are released
-        atexit.register(self.render.close)
-
         self.reset()
+
+    def close(self) -> None:
+        self.render.close()
 
     def reset(self) -> torch.Tensor:
         """
@@ -103,9 +101,8 @@ class GroupedEnvironments:
         if self.max_steps is not None and self.current_step >= self.max_steps:
             done = True
         if done:
-            self.render.step(
-                self.envs, rewards * current_valid_mask, self.current_terminated_mask, self.current_truncated_mask
-            )  # Show that all environments are done
+            # Render ending frames for all environments
+            self.render.step(self.envs, rewards * current_valid_mask, self.current_terminated_mask, self.current_truncated_mask)
         self.current_step += 1
 
         return self._transform_observation(obs), self._transform_rewards(rewards, render_valid_mask), done

@@ -87,7 +87,7 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         valid_mask = torch.logical_not(torch.logical_or(terminated_mask, truncated_mask))
         mean_reward = torch.mean(torch.sum(rewards * valid_mask, dim=1))
         ep_length = torch.mean(torch.sum(valid_mask, dim=1, dtype=torch.float32))
-        steps_formatted = f"[{step}/{args.episode_batches} ({total_samples} samples) (timesteps {total_timesteps})]"
+        steps_formatted = f"[{step}/{args.episode_batches} ({total_samples} episodes) ({total_timesteps} timesteps)]"
         stats_formatted = f"reward - {mean_reward:.2f}, eplength - {ep_length:.2f}, avg_diff - {math.sqrt(loss[0]):.2f}, temperature - {temp:.4}"  # fmt: skip
         print(f"Annealing {steps_formatted}: {stats_formatted}")
         step_rewards.append(mean_reward)
@@ -99,7 +99,8 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
         if value is not None:
             torch.save(value.state_dict(), step_path / "value.pth")
 
-    # Close the first observation renderer if it was created
+    # Close environments/renderers
+    envs.close()
     if render_first_obs is not None and value is not None:
         render_first_obs.update(policy, value, args.temp_end, args.discount_factor)
         render_first_obs.close()
