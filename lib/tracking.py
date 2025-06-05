@@ -146,15 +146,11 @@ class RenderEpisodes:
         self.sample_height = 400  # Default height
         self.sample_width = 600  # Default width
 
-        # Try to get sample dimensions if possible
-        try:
-            # Get render resolution from a sample - reset first to avoid OrderEnforcer error
-            dummy_env.reset()
-            sample_render: np.ndarray = dummy_env.render()  # type: ignore
-            self.sample_height, self.sample_width = sample_render.shape[:2]
-        except Exception as e:
-            print(f"Could not get render dimensions from dummy environment: {e}")
-            print(f"Using default dimensions: {self.sample_width}x{self.sample_height}")
+        # Get data from dummy environment
+        dummy_env.reset()
+        sample_render: np.ndarray = dummy_env.render()  # type: ignore
+        self.sample_height, self.sample_width = sample_render.shape[:2]
+        self.reward_threshold = dummy_env.unwrapped.spec.reward_threshold
 
         # Calculate full grid resolution
         self.grid_width = self.sample_width * self.grid_cols
@@ -267,10 +263,10 @@ class RenderEpisodes:
 
                     # Add overlay with 20% opacity
                     overlay = np.zeros_like(render)
-                    if terminated_mask[i]:
-                        overlay[:, :] = [255, 0, 0]  # Red color
-                    elif truncated_mask[i]:
+                    if self.accumulated_rewards[i] >= self.reward_threshold:
                         overlay[:, :] = [0, 255, 0]  # Green color
+                    else:
+                        overlay[:, :] = [255, 0, 0]  # Red color
                     alpha = 0.2  # 20% opacity
                     render = cv2.addWeighted(render, 1 - alpha, overlay, alpha, 0)
 
