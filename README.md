@@ -73,32 +73,26 @@ p \propto e^{-E/kT}
 where
 
 - $p$ is the probability of the particle being at a certain location
-- $e \\approx 2.718$
+- $e \approx 2.718$
 - $E$ is the energy of the particle due to being at that location
 - $k$ is the Boltzmann constant
 - $T$ is the absolute temperature of the system
-- $\\propto$ signifies that $p$ varies proportionally to the right hand side
+- $\propto$ signifies that $p$ varies proportionally to the right hand side
 
 Essentially, particles are always more concentrated to lower energy states/locations, with the probability distribution depending on the temperature.
 
-In a deep reinforcement learning setting, we want the neural network to have a high probability of emitting actions that lead to high rewards and a low probability of actions that lead to low rewards. If we substitute negative energy with reward $R = -E$, and set Boltzmann constant $k=1$ ($k$ is just some physical constant which we don't need in the algorithm), we get:
+In a deep reinforcement learning setting, we want the neural network to have a high probability of emitting actions that lead to high rewards and a low probability of actions that lead to low rewards. If we substitute negative energy with reward $R = -E$ (high reward = high likelihood = low energy), and set Boltzmann constant $k=1$ ($k$ is just some physical constant which we don't need in the algorithm), we get:
 
 ```math
-p \propto e^{R/T} \Rightarrow\\
-```
-
-Or, in other words:
-
-```math
-p = c\ e^{R/T}
+p \propto e^{R/T} \Rightarrow p = c\ e^{R/T}
 ```
 
 where $c$ is a constant for a particular distribution.
 
-Now let's keep in mind that the total probability of a trajectory is the product of the probabilities of all actions taken at all steps:
+Now let's keep in mind that the total probability of a trajectory is the product of the probabilities of all actions taken on all steps:
 
 ```math
-p = p_1 p_2 ... p_n\\
+p = p_1 p_2 ... p_n
 ```
 
 And the reward is the sum of all rewards at all steps:
@@ -185,4 +179,4 @@ The following coding conventions are used:
 
 ## Future
 
-Current evidence does not support policy annealing to be state of the art. However, it does
+Current experiments are promising, but as of now, there's no evidence for anything state of the art.

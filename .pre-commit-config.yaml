@@ -57,6 +57,7 @@ repos:
           - mdformat-gfm
           - mdformat-tables
           - mdformat_frontmatter
+          - mdformat_myst
 
   # word spelling linter
   - repo: https://github.com/codespell-project/codespell
