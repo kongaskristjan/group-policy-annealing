@@ -1,12 +1,188 @@
-# Group policy annealing
+# Policy Annealing
 
-## Conventions
-
-- Tensor's channels are ordered like this: `(num_groups, group_size, steps, num_actions/num_observations)`. Note that `batch_size = num_groups * group_size`.
-- Variables whose type can't be inferred by mypy should be explicitly typed: function signatures, empty list initializations, etc.
-- Ensure that linting and tests succeed: `pre-commit run -a && pytest`
+This repository implements an new class of a thermodynamics inspired algorithms for reinforcement learning, together with experiments demonstrating it's usability. Just as particles in nature generally prefer to occupy states/locations with lower total energy (there's more air particles down here compared to 100km away from earth), the algorithm enforces that action sequences that get high rewards have high total probabilities. Total probability is here defined as the product of probabilities of all actions taken: $p\_{total}=p_1 p_2 ... p_n$.
 
 ## Installation
 
-- Swig needs to be installed on a system level (eg. `apt install swig` or `pacman -S swig`)
-- After that, you need to install Pytorch (`pip install torch --index-url https://download.pytorch.org/whl/cpu`) and requirements (`pip install -r requirements.txt`)
+This project requires Python 3.10+ to be installed.
+
+On Linux based systems, installing other dependencies is relatively easy:
+
+```bash
+# Install Swig on the system level: Ubuntu/Mint
+sudo apt install swig
+
+# Install Swig on the system level: Arch Linux
+sudo pacman -S swig
+
+# Install Pytorch
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+
+# Install other Python dependencies
+pip install -r requirements.txt
+```
+
+## Usage
+
+Experiments can be run with the following command:
+
+```bash
+python scripts/main.py
+```
+
+Please see `--help` for setting the training environment and type/parameters, as well as whether to render the training progress. All metadata and renders will be stored in `runs/[timestamp]/` directory.
+
+Performance curves of different runs can be plotted and compared with
+
+```bash
+python scripts/plot.py runs/[timestamp1]/experiment.json runs/[timestamp2]/experiment.json
+```
+
+Below is a list of environments together with hyperparameters and visualizations of the trained agents.
+
+### Cart Pole
+
+Here's a very aggressive setup for training the CartPole agent. The training can be extremely fast if we're lucky, but is very unstable and often does not converge.
+
+```bash
+python scripts/main.py --value-function direct --batch-size 4 --episode-batches 10 --num-runs 10 --learning-rate 0.005 --optim-steps 300 --env-name CartPole-v1 --render full
+```
+
+Training sample with fast progress
+
+TBD
+
+### Lunar Lander
+
+```bash
+python scripts/main.py --env-name LunarLander-v3 --anneal-steps 300 --clip-eps 2
+```
+
+Final trained agent:
+
+TBD
+
+## Technical description
+
+At a fixed temperature $T$, a particle's probability to be in a certain location varies according to the Boltzmann distribution:
+
+```math
+p \propto e^{-E/kT}
+```
+
+where
+
+- $p$ is the probability of the particle being at a certain location
+- $e \\approx 2.718$
+- $E$ is the energy of the particle due to being at that location
+- $k$ is the Boltzmann constant
+- $T$ is the absolute temperature of the system
+- $\\propto$ signifies that $p$ varies proportionally to the right hand side
+
+Essentially, particles are always more concentrated to lower energy states/locations, with the probability distribution depending on the temperature.
+
+In a deep reinforcement learning setting, we want the neural network to have a high probability of emitting actions that lead to high rewards and a low probability of actions that lead to low rewards. If we substitute negative energy with reward $R = -E$, and set Boltzmann constant $k=1$ ($k$ is just some physical constant which we don't need in the algorithm), we get:
+
+```math
+p \propto e^{R/T} \Rightarrow\\
+```
+
+Or, in other words:
+
+```math
+p = c\ e^{R/T}
+```
+
+where $c$ is a constant for a particular distribution.
+
+Now let's keep in mind that the total probability of a trajectory is the product of the probabilities of all actions taken at all steps:
+
+```math
+p = p_1 p_2 ... p_n\\
+```
+
+And the reward is the sum of all rewards at all steps:
+
+```math
+R = R_1 + R_2 + ... + R_n
+```
+
+We find that
+
+```math
+p_1 p_2 ... p_n = c\ e^{(R_1 + R_2 + ... + R_n) / T}
+```
+
+Now, the probabilities on the left side and the exponents on the right side can become unmanageably small. Let's apply the logarithm to both sides:
+
+```math
+log(p_1) + ... + log(p_n) = log(c) + \frac{R_1 + ... + R_n}{T}
+```
+
+which we can rearrange as
+
+```math
+\begin{equation}
+\boxed{V' = -log(c) = (R_1 - T \cdot log(p_1)) + ... + (R_n - T \cdot log(p_n))}
+\end{equation}
+```
+
+Where $V' = -log(c)$ (let's call it "value") is a constant specific given we have a deterministic environment and starting position. This equation is the bases for all variants of the policy algorithm. If we can enforce the probabilities to satisfy this equation closely, we've learned an agent that has a high probability of achieving high rewards.
+
+### Grouped Policy Annealing
+
+The easiest way to enforce the above condition is to group environment runs by identical seed (starting conditions) so they should have an identical value. We can then use gradient descent to optimize the neural network to produce probabilities that satisfy the equations.
+
+Specifically, for the loss function, we note that the condition is satisfied, when all computed values of the trajectories are equal to the mean of those values. We thus use our beloved squaring to compute the loss:
+
+```math
+L = (V_{traj_A} - \langle V \rangle)^2 + (V_{traj_B} - \langle V \rangle)^2 + ...
+```
+
+where $\langle V \rangle$ is the average of values
+
+```math
+\langle V \rangle = \frac{V_{traj_A} + V_{traj_B} + ...}{N_{trajectories}}
+```
+
+and individual $V\_{traj_X}$ are computed using rewards and probabilities of taken actions of the trajectory $X$.
+
+### Value Function Policy Annealing
+
+To improve the efficiency of the learning, we'd ideally enforce the boxed condition $(1)$ on every timestep. As a further improvement, this gives us to give a higher priority to more immediate rewards by using a discount factor:
+
+```math
+V_i' = (R_{i} - T \cdot log(p_{i})) + \gamma \cdot (R_{i+1} - T \cdot log(p_{i+1})) + ... + \gamma^k \cdot (R_{i+k} - T \cdot log(p_{i+k}))
+```
+
+with
+
+```math
+0 < \gamma < 1
+```
+
+We can then define two neural networks, one for computing $V'$ and another for the policy that assigns the probabilities of actions. Both are optimized at once by minimizing the squared error of the above equation.
+
+Experiments show that this technique can be quite sample efficient, however it needs a relatively large number of training steps on each batch of samples. This is because the value and policy networks learn together on one equation, but the policy network often learns wrong behaviour while the value network has not converged yet.
+
+## Comparison to related algorithms
+
+### Simulated Annealing
+
+TBD.
+
+### Entropy bonus regularization
+
+TBD.
+
+## Codebase
+
+The following coding conventions are used:
+
+- Tensor's channels are ordered like this: `(num_groups, group_size, steps, num_actions/num_observations)`. Note that `batch_size = num_groups * group_size`.
+- Variables whose type can't be inferred by mypy are explicitly typed: function signatures, empty list initializations, etc.
+- Ensure that linting and tests succeed: `pre-commit run -a && pytest`
+
+## Future
+
+Current evidence does not support policy annealing to be state of the art. However, it does
