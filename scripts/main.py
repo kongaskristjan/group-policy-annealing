@@ -44,9 +44,9 @@ def run_experiment(args: Namespace, run_path: Path) -> list[float]:
     policy = get_model(envs.num_observations, envs.num_actions, hidden=[32, 32])
     value = get_model(envs.num_observations, 1, hidden=[32, 32]) if args.value_function in ["difference", "direct"] else None
     if args.load_models is not None:
-        policy.load_state_dict(torch.load(Path(args.load_models) / "policy.pth"))
+        policy.load_state_dict(torch.load(Path(args.load_models) / "policy.pth", weights_only=True))
         if value is not None:
-            value.load_state_dict(torch.load(Path(args.load_models) / "value.pth"))
+            value.load_state_dict(torch.load(Path(args.load_models) / "value.pth", weights_only=True))
     params = list(policy.parameters()) + (list(value.parameters()) if value is not None else [])
     optimizer = torch.optim.Adam(params, lr=args.learning_rate, betas=(0.5, 0.99))
 
@@ -144,7 +144,6 @@ def parse_args() -> Namespace:
         args.disable_group_initialization = True
 
     if args.validate:
-        args.num_runs = 1
         args.num_episode_batches = 1
         args.num_optim_steps = 1  # For loss calculation
         args.learning_rate = 0.0
