@@ -1,6 +1,6 @@
 import torch
 
-from lib.grouped_environments import GroupedEnvironments
+from lib.batch_environment import BatchEnvironment
 from lib.model import get_model
 from lib.sample import sample_batch_episode
 
@@ -9,7 +9,7 @@ def test_sample_batch_episode():
     """Test sampling actions from a model."""
     # Create a model for CartPole-v1 which has 4 observations and 2 actions
     group_size, batch_size = 2, 6
-    envs = GroupedEnvironments("CartPole-v1", group_size, batch_size, seed=42)
+    envs = BatchEnvironment("CartPole-v1", group_size, batch_size, seed=42)
     model = get_model(envs.num_observations, envs.num_actions, hidden=[8])
 
     for validate in [True, False]:

@@ -12,7 +12,7 @@ import torch
 
 from lib.anneal_grouped import anneal_grouped
 from lib.anneal_value_function import anneal_value_function
-from lib.grouped_environments import GroupedEnvironments
+from lib.batch_environment import BatchEnvironment
 from lib.model import get_model, get_temperature
 from lib.sample import sample_batch_episode
 from lib.tracking import RenderValue, get_git_info, save_run
@@ -37,7 +37,7 @@ def main(args: Namespace) -> None:
 
 def run_experiment(args: Namespace, run_path: Path) -> list[float]:
     render_path = run_path / "training.mp4" if args.render == "full" else None
-    envs = GroupedEnvironments(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render_path=render_path)
+    envs = BatchEnvironment(args.env_name, args.group_size, args.batch_size, not args.disable_group_initialization, render_path=render_path)
 
     # Initialize policy model and optionally a value model
     # Use common optimizer for both models

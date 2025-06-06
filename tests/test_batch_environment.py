@@ -1,10 +1,10 @@
 import torch
 
-from lib.grouped_environments import GroupedEnvironments
+from lib.batch_environment import BatchEnvironment
 
 
 def test_observation_seeding():
-    env = GroupedEnvironments(env_name="CartPole-v1", group_size=2, batch_size=8)
+    env = BatchEnvironment(env_name="CartPole-v1", group_size=2, batch_size=8)
     obs = env.reset()
     assert env.envs.num_envs == 8
 
@@ -23,7 +23,7 @@ def test_valid_and_reward_accumulation():
     batch_size = 4
 
     # Test that done is False when the first step is taken
-    env = GroupedEnvironments(env_name="CartPole-v1", group_size=1, batch_size=batch_size)
+    env = BatchEnvironment(env_name="CartPole-v1", group_size=1, batch_size=batch_size)
     input_actions = torch.zeros(batch_size, dtype=torch.int64)
     obs, rewards, done = env.step(input_actions)
     assert not done

@@ -9,7 +9,7 @@ import torch
 from lib.tracking import RenderEpisodes
 
 
-class GroupedEnvironments:
+class BatchEnvironment:
     """
     An environment grouping class of size `batch_size` that contains multiple environments that are reset with identical
     seeds within each group of size `group_size`. Valid masks are accumulated over the group.

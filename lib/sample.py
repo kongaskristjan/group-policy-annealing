@@ -1,10 +1,10 @@
 import torch
 
-from lib.grouped_environments import GroupedEnvironments
+from lib.batch_environment import BatchEnvironment
 
 
 def sample_batch_episode(
-    policy: torch.nn.Module, envs: GroupedEnvironments, validate: bool
+    policy: torch.nn.Module, envs: BatchEnvironment, validate: bool
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Sample actions from the policy model in the given environment.
