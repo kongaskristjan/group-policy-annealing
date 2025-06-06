@@ -163,11 +163,19 @@ Experiments show that this technique can be quite sample efficient, however it n
 
 ### Simulated Annealing
 
-TBD.
+While Simulated Annealing (SA) has some superficial similarities with Policy Annealing (PA), the task solved is completely different. SA attempts to find an optimal solution by choosing solutions based on Boltzmann probability distribution. PA on the other hand, trains a function (neural network) that generates optimal solutions.
 
-### Entropy bonus regularization
+### Entropy Bonus regularization
 
-TBD.
+Entropy bonus regularization is a common technique in modern deep reinforcement learning. The goal is to encourage exploration by adding the policy's entropy, scaled by a temperature parameter $\alpha$ (equivalent to T in our model), to the reward signal. The objective is to find a policy $\pi$ that maximizes the expectation of $R + \alpha * H(\pi)$, where $H$ is the policy's entropy.
+
+#### Shared theoretical optimum
+
+The core mathematical form $R - T * log(p)$ is central to both Policy Annealing and entropy-regularized RL. In fact, the policy that maximizes the entropy-augmented objective $E[R] + T*H(π)$ is the Boltzmann distribution, $p \propto e^{R/T}$. This is the same distribution that Policy Annealing aims to produce by enforcing its "constant value" condition. Therefore, both algorithms are striving towards the same optimal policy for a given temperature.
+
+#### Policy Annealing is more stable (at least in theory)
+
+Policy annealing finds and stays at the optimal distribution, while Entropy bonus may cause the policy to never settle. As an example, let's assume our RL environment has no input, but three possible actions: $A$ (fixed high reward), $B$ (fixed low reward) and $C$ (fixed low reward), and each episode only lasts one action (essentially 3-armed bandit with deterministic rewards). For policy annealing, given a temperature T, we can solve for the probability distribution, and find that no matter what action was taken, there is zero gradient (the solution is stationary). On the other hand, for entropy bonus, if we take action $B$, the loss function would attempt to equalize the probability between $A$ and $C$, thus never really resulting in a stationary policy.
 
 ## Codebase
 
@@ -176,7 +184,3 @@ The following coding conventions are used:
 - Tensor's channels are ordered like this: `(num_groups, group_size, steps, num_actions/num_observations)`. Note that `batch_size = num_groups * group_size`.
 - Variables whose type can't be inferred by mypy are explicitly typed: function signatures, empty list initializations, etc.
 - Ensure that linting and tests succeed: `pre-commit run -a && pytest`
-
-## Future
-
-Current experiments are promising, but as of now, there's no evidence for anything state of the art.
