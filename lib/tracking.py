@@ -150,7 +150,7 @@ class RenderEpisodes:
         dummy_env.reset()
         sample_render: np.ndarray = dummy_env.render()  # type: ignore
         self.sample_height, self.sample_width = sample_render.shape[:2]
-        self.reward_threshold = dummy_env.unwrapped.spec.reward_threshold
+        self.reward_threshold = dummy_env.unwrapped.spec.reward_threshold  # type: ignore
 
         # Calculate full grid resolution
         self.grid_width = self.sample_width * self.grid_cols
