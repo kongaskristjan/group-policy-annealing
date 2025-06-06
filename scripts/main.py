@@ -21,17 +21,18 @@ from lib.tracking import RenderValue, get_git_info, save_run
 def main(args: Namespace) -> None:
     timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
     git_info = get_git_info()
-    run_path = Path(__file__).parent.parent / "runs" / timestamp
-    print(f"Run data will be stored in {run_path}")
+    base_path = Path(__file__).parent.parent / "runs" / timestamp
+    print(f"Run data will be stored in {base_path}")
 
     all_step_rewards: list[list[float]] = []
     for run in range(args.num_runs):
         print(f"Running experiment {run + 1} of {args.num_runs}:")
-        step_rewards = run_experiment(args, run_path / f"{run:03d}")
+        run_path = base_path / f"{run:03d}" if args.num_runs > 1 else base_path
+        step_rewards = run_experiment(args, run_path)
         all_step_rewards.append(step_rewards)
         print()
 
-    save_run(run_path / "experiment.json", args, git_info, all_step_rewards)
+    save_run(base_path / "experiment.json", args, git_info, all_step_rewards)
 
 
 def run_experiment(args: Namespace, run_path: Path) -> list[float]:
