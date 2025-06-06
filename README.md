@@ -2,6 +2,13 @@
 
 This repository implements an new class of a thermodynamics inspired algorithms for reinforcement learning, together with experiments demonstrating it's usability. Just as particles in nature generally prefer to occupy states/locations with lower total energy (there's more air particles down here compared to 100km away from earth), the algorithm enforces that action sequences that get high rewards have high total probabilities. Total probability is here defined as the product of probabilities of all actions taken: $p\_{total}=p_1 p_2 ... p_n$.
 
+<figure>
+    <img src="https://github.com/user-attachments/assets/9cecaade-91cd-4dbe-b2c1-19a632622d43" alt="">
+    <figcaption>
+        A neural network trained the Policy Annealing algorithm taking a lunar lander to a safe stop. For training, see "Usage".
+    </figcaption>
+</figure>
+
 ## Installation
 
 This project requires Python 3.10+ to be installed.
@@ -42,25 +49,47 @@ Below is a list of environments together with hyperparameters and visualizations
 
 ### Cart Pole
 
-Here's a very aggressive setup for training the CartPole agent. The training can be extremely fast if we're lucky, but is very unstable and often does not converge.
+Cart Pole environment requires the agent to learn to balance a vertical pole by accelerating the cart left or right. Reward is given for each time step as long as the pole is vertical within 15 degrees accuracy and does not veer out of the image.
+
+Here's a very aggressive setup for training the CartPole agent. The training can be extremely fast if we're lucky, but is quite unstable and often does not converge.
 
 ```bash
-python scripts/main.py --value-function direct --batch-size 4 --episode-batches 10 --num-runs 10 --learning-rate 0.005 --optim-steps 300 --env-name CartPole-v1 --render full
+python scripts/main.py --value-function direct --batch-size 4 --num-episode-batches 10 --learning-rate 0.005 --num-optim-steps 300 --env-name CartPole-v1 --render full
 ```
 
-Training sample with fast progress
+A relatively lucky run visualized:
 
-TBD
+https://github.com/user-attachments/assets/7df2edd7-20dc-49d8-97dc-27ac8d1c4313
+
+Here's a much more stable setup that almost always converges:
+
+```bash
+python scripts/main.py --value-function grouped --env-name CartPole-v1 --num-episode-batches 10 --temp-start 0.5 --temp-end 0.5
+```
+
+The final solution seems more convincing:
+
+https://github.com/user-attachments/assets/50dae70d-556a-4041-9a1d-7fb8ff77ad46
+
+With validation mode on, it's even getting boring:
+
+https://github.com/user-attachments/assets/d861589b-2d54-40f7-b0c2-839c1039b4fb
 
 ### Lunar Lander
 
+In this environment, the moonlander agent must learn to fire the three (one main, and two side) thrusters to successfully land on a platform. Reward is increased for being near the platform and landing (either leg contact or full landing), while it's reduced for thruster usage (fuel consumption), fast movement and non-vertical orientation.
+
 ```bash
-python scripts/main.py --env-name LunarLander-v3 --anneal-steps 300 --clip-eps 2
+python scripts/main.py --env-name LunarLander-v3 --num-episode-batches 300 --clip-eps 2 --temp-start 0.1 --temp-end 0.1 --learning-rate 0.0005
 ```
 
-Final trained agent:
+To visualize the final trained agent in validation mode (always choose the highest probability action):
 
-TBD
+```bash
+python scripts/plot.py --env-name LunarLander-v3 --validate --render full --batch-size 4
+```
+
+https://github.com/user-attachments/assets/4d831a23-83fe-4633-a66d-4175672a93fb
 
 ## Technical description
 
