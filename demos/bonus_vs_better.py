@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import plotly.graph_objects as go
 import torch
@@ -33,133 +35,122 @@ class Policy(nn.Module):
         return torch.softmax(self.logits, dim=-1)
 
 
+# --- Algorithm-Specific Loss Functions ---
+
+
+def calculate_annealing_based_loss(
+    probs: torch.Tensor, actions_sampled: torch.Tensor, rewards_sampled: torch.Tensor, use_policy_gradient: bool
+) -> torch.Tensor:
+    """Calculates the loss for either Policy Annealing (GPA) or Policy Gradients + Policy Annealing Regularization (PG+PA)."""
+    probs_sampled = probs[actions_sampled]
+    log_probs_sampled = torch.log(probs_sampled)
+
+    # Calculate V' = R - T * log(p) for each trajectory
+    values = rewards_sampled - TEMPERATURE * log_probs_sampled
+
+    # Use V' as the advantage, centered around its batch mean
+    mean_value = values.mean()
+    if use_policy_gradient:
+        # Policy Gradient Loss with V' as the advantage (includes annealing regularization)
+        advantages = values - mean_value
+        return -(log_probs_sampled * advantages.detach()).mean()
+
+    # Regular Policy Annealing
+    return ((values - mean_value) ** 2).mean()
+
+
+def calculate_pg_eb_loss(probs: torch.Tensor, actions_sampled: torch.Tensor, rewards_sampled: torch.Tensor, use_entropy: bool) -> torch.Tensor:
+    """Calculates the loss for Policy Gradients + Entropy Bonus (PG+EB)."""
+    log_probs_sampled = torch.log(probs[actions_sampled])
+
+    # Use the batch average reward as the baseline for centering
+    baseline = rewards_sampled.mean()
+    advantages = rewards_sampled - baseline
+
+    # Policy Gradient Loss: -E[log(pi(a|s)) * (R - baseline)]
+    policy_gradient_loss = -(log_probs_sampled * advantages.detach()).mean()
+
+    # Entropy Bonus Loss: -T * H(pi) where H(pi) = -sum(p * log(p))
+    if use_entropy:
+        entropy = -torch.sum(probs * torch.log(probs))
+        entropy_loss = -TEMPERATURE * entropy
+        return policy_gradient_loss + entropy_loss
+    return policy_gradient_loss
+
+
 # --- Main Simulation Logic ---
 
 
-def run_simulation() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def run_simulation() -> dict[str, np.ndarray]:
     """
-    Runs the simulation for both algorithms and returns the history of their policies.
+    Runs the simulation for all algorithms and returns their policy histories.
     """
+    # Define the algorithms to run, each with its own policy, optimizer, and loss function
+    # fmt: off
+    algorithms: list[dict[str, Any]] = [
+        {"name": "Policy Gradients without regularization", "loss_fn": calculate_pg_eb_loss, "history": [], "kwargs": {"use_entropy": False}},
+        {"name": "Policy Gradients + Entropy Bonus", "loss_fn": calculate_pg_eb_loss, "history": [], "kwargs": {"use_entropy": True}},
+        {"name": "Policy Gradients + Policy Annealing Regularization", "loss_fn": calculate_annealing_based_loss, "history": [], "kwargs": {"use_policy_gradient": True}},
+        # {"name": "Grouped Policy Annealing", "loss_fn": calculate_annealing_based_loss, "history": [], "kwargs": {"use_policy_gradient": False}},
+    ]
+    # fmt: on
+
     # Initialize a separate policy and optimizer for each algorithm
-    gpa_policy = Policy(NUM_ACTIONS)
-    pg_pa_policy = Policy(NUM_ACTIONS)
-    pg_eb_policy = Policy(NUM_ACTIONS)
-
-    gpa_optimizer = optim.SGD(gpa_policy.parameters(), lr=LEARNING_RATE)
-    pg_pa_optimizer = optim.SGD(pg_pa_policy.parameters(), lr=LEARNING_RATE)
-    pg_eb_optimizer = optim.SGD(pg_eb_policy.parameters(), lr=LEARNING_RATE)
-
-    # Store probability history for visualization
-    gpa_probs_history = []
-    pg_pa_probs_history = []
-    pg_eb_probs_history = []
+    for alg in algorithms:
+        alg["policy"] = Policy(NUM_ACTIONS)
+        alg["optimizer"] = optim.SGD(alg["policy"].parameters(), lr=LEARNING_RATE)
 
     print("Starting simulation...")
     for step in range(NUM_TRAINING_STEPS):
-        # Record the policy probabilities for visualization
-        gpa_probs_history.append(gpa_policy().detach().numpy())
-        pg_pa_probs_history.append(pg_pa_policy().detach().numpy())
-        pg_eb_probs_history.append(pg_eb_policy().detach().numpy())
+        # First, record the current policy probabilities for all algorithms
+        for alg in algorithms:
+            probs = alg["policy"]().detach().numpy()
+            alg["history"].append(probs)
 
-        # --- 1. Grouped Policy Annealing (GPA) Step ---
-        gpa_optimizer.zero_grad()
-        gpa_probs = gpa_policy()
-        gpa_actions_sampled = torch.multinomial(gpa_probs, num_samples=BATCH_SIZE, replacement=True)
+        # Then, perform a training step for each algorithm
+        for alg in algorithms:
+            policy = alg["policy"]
+            optimizer = alg["optimizer"]
+            loss_fn = alg["loss_fn"]
+            kwargs = alg["kwargs"]
 
-        # Get the rewards and probabilities for the actions we just sampled
-        gpa_rewards_sampled = REWARDS[gpa_actions_sampled]
-        gpa_probs_sampled = gpa_probs[gpa_actions_sampled]
+            optimizer.zero_grad()
 
-        # Calculate V' for each trajectory in the batch
-        # V' = R - T * log(p)
-        gpa_log_probs_sampled = torch.log(gpa_probs_sampled)
-        gpa_values = gpa_rewards_sampled - TEMPERATURE * gpa_log_probs_sampled
+            # --- Common step: Sample actions and get rewards ---
+            current_probs = policy()
+            actions_sampled = torch.multinomial(current_probs, num_samples=BATCH_SIZE, replacement=True)
+            rewards_sampled = REWARDS[actions_sampled]
 
-        # The loss aims to make all V' in the batch equal.
-        # We use the mean squared error from the batch's average V'.
-        gpa_mean_value = gpa_values.mean().detach()
-        gpa_loss = ((gpa_values - gpa_mean_value) ** 2).mean()
+            # --- Algorithm-specific step: Calculate loss ---
+            loss = loss_fn(current_probs, actions_sampled, rewards_sampled, **kwargs)
 
-        gpa_loss.backward()
-        gpa_optimizer.step()
-
-        # --- 2. Policy Gradients + Policy Annealing Regularization (PG+PA) Step ---
-        pg_pa_optimizer.zero_grad()
-        pg_pa_probs = pg_pa_policy()
-        pg_pa_actions_sampled = torch.multinomial(pg_pa_probs, num_samples=BATCH_SIZE, replacement=True)
-
-        # Get the rewards and probabilities for the actions we just sampled
-        pg_pa_rewards_sampled = REWARDS[pg_pa_actions_sampled]
-        pg_pa_probs_sampled = pg_pa_probs[pg_pa_actions_sampled]
-
-        # Calculate V' for each trajectory in the batch
-        # V' = R - T * log(p)
-        pg_pa_log_probs_sampled = torch.log(pg_pa_probs_sampled)
-        pg_pa_values = pg_pa_rewards_sampled - TEMPERATURE * pg_pa_log_probs_sampled
-
-        # The loss aims to make all V' in the batch equal.
-        # We use the mean squared error from the batch's average V'.
-        pg_pa_mean_value = pg_pa_values.mean()
-        pg_pa_advantages = pg_pa_values - pg_pa_mean_value
-        pg_pa_loss = -(pg_pa_log_probs_sampled * pg_pa_advantages.detach()).mean()
-
-        pg_pa_loss.backward()
-        pg_pa_optimizer.step()
-
-        # --- 3. Policy Gradients + Entropy Bonus (PG+EB) Step ---
-        pg_eb_optimizer.zero_grad()
-        pg_eb_probs = pg_eb_policy()
-        pg_eb_actions_sampled = torch.multinomial(pg_eb_probs, num_samples=BATCH_SIZE, replacement=True)
-
-        # Get rewards and log-probabilities for the sampled actions
-        pg_eb_rewards_sampled = REWARDS[pg_eb_actions_sampled]
-        pg_eb_log_probs_sampled = torch.log(pg_eb_probs[pg_eb_actions_sampled])
-
-        # Use the batch average reward as the baseline for centering
-        baseline = pg_eb_rewards_sampled.mean()
-        advantages = pg_eb_rewards_sampled - baseline
-
-        # Policy Gradient Loss: -E[log(pi(a|s)) * (R - baseline)]
-        # We want to MAXIMIZE this, so we MINIMIZE its negative.
-        policy_gradient_loss = -(pg_eb_log_probs_sampled * advantages.detach()).mean()
-
-        # Entropy Bonus Loss: -T * H(pi)
-        # We want to MAXIMIZE entropy, so we MINIMIZE its negative.
-        # Entropy H(pi) = -sum(p * log(p))
-        entropy = -torch.sum(pg_eb_probs * torch.log(pg_eb_probs))
-        entropy_loss = -TEMPERATURE * entropy
-
-        # The total loss is a combination of exploiting rewards and encouraging exploration
-        pg_eb_loss = policy_gradient_loss + entropy_loss
-
-        pg_eb_loss.backward()
-        pg_eb_optimizer.step()
+            # --- Common step: Backpropagate and update weights ---
+            loss.backward()
+            optimizer.step()
 
         if (step + 1) % 25 == 0:
             print(f"Step {step+1}/{NUM_TRAINING_STEPS} complete.")
 
     print("Simulation finished.")
-    return np.array(gpa_probs_history), np.array(pg_pa_probs_history), np.array(pg_eb_probs_history)
+
+    # Return the histories as separate numpy arrays
+    histories = {alg["name"]: np.array(alg["history"]) for alg in algorithms}
+
+    return histories
 
 
-def create_animation(gpa_history: np.ndarray, pg_pa_history: np.ndarray, pg_eb_history: np.ndarray):
+def create_animation(histories: dict[str, np.ndarray]):
     """
     Creates and displays a Plotly animated bar chart of the policy probabilities.
     """
     print("Generating animation...")
     # Create figure with initial data (step 0)
-    fig = go.Figure(
-        data=[
-            go.Bar(name="Grouped Policy Annealing", x=ACTION_LABELS, y=gpa_history[0]),
-            go.Bar(name="Policy Gradients + Policy Annealing Regularization", x=ACTION_LABELS, y=pg_pa_history[0]),
-            go.Bar(name="Policy Gradients + Entropy Bonus", x=ACTION_LABELS, y=pg_eb_history[0]),
-        ]
-    )
+    fig = go.Figure(data=[go.Bar(name=name, x=ACTION_LABELS, y=histories[name][0]) for name in histories])
 
     # Create frames for the animation
     frames = []
     for i in range(1, NUM_TRAINING_STEPS):
-        frame = go.Frame(name=str(i), data=[go.Bar(y=gpa_history[i]), go.Bar(y=pg_pa_history[i]), go.Bar(y=pg_eb_history[i])])
+        frame = go.Frame(name=str(i), data=[go.Bar(y=histories[name][i]) for name in histories])
         frames.append(frame)
 
     fig.frames = frames
@@ -216,7 +207,7 @@ def create_animation(gpa_history: np.ndarray, pg_pa_history: np.ndarray, pg_eb_h
     ]
 
     fig.update_layout(
-        title="Policy Annealing vs. Policy Gradients + Entropy Bonus",
+        title="Policy Annealing variants vs Entropy Bonus",
         xaxis_title="Action",
         yaxis_title="Probability",
         yaxis_range=[0, 1],
@@ -230,5 +221,5 @@ def create_animation(gpa_history: np.ndarray, pg_pa_history: np.ndarray, pg_eb_h
 
 
 if __name__ == "__main__":
-    gpa_history, pg_pa_history, pg_eb_history = run_simulation()
-    create_animation(gpa_history, pg_pa_history, pg_eb_history)
+    histories = run_simulation()
+    create_animation(histories)
