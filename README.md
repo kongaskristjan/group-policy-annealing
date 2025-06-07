@@ -201,13 +201,14 @@ The core mathematical form $R - T * log(p)$ is central to both Policy Annealing 
 
 #### Policy Annealing is more stable (at least in theory)
 
-Policy annealing finds and stays at the optimal distribution, while Entropy bonus may cause the policy to never settle. As an example, let's assume our RL environment has no input, but three possible actions: $A$ (fixed high reward), $B$ (fixed low reward) and $C$ (fixed low reward), and each episode only lasts one action (essentially 3-armed bandit with deterministic rewards). For policy annealing, given a temperature T, we can solve for the probability distribution, and find that no matter what action was taken, there is zero gradient (the solution is stationary). On the other hand, for entropy bonus, if we take action $B$, the loss function would attempt to equalize the probability between $A$ and $C$, thus never really resulting in a stationary policy.
+Policy annealing finds and stays at the optimal distribution, while Entropy bonus may cause the policy to never settle. As an example, let's assume our RL environment has no input, but three possible actions: $A$ (fixed low reward), $B$ (fixed low reward) and $C$ (fixed high reward), and each episode only lasts one action (essentially 3-armed bandit with deterministic rewards). For policy annealing, given a temperature T, we can solve for the probability distribution, and find that no matter what action was taken, there is zero gradient (the solution is stationary). On the other hand, for entropy bonus, if we take action $B$, the loss function would attempt to equalize the probability between $A$ and $C$, thus never really resulting in a stationary policy.
 
 ## Codebase
 
 The current project is divided into the following parts:
 
 ```
+- demos/                          # Code for some README visualizations
 - lib/
     - anneal_*.py                 # Annealing logic implementations (grouped and value function implementations)
     - loss_*.py                   # Loss function implementations (grouped and value function implementations)
