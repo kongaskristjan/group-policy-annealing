@@ -1,6 +1,6 @@
 # Policy Annealing
 
-This repository implements an new class of a thermodynamics inspired algorithms for reinforcement learning, together with experiments demonstrating it's usability. Just as particles in nature generally prefer to occupy states/locations with lower total energy (there's more air particles down here compared to 100km away from earth), the algorithm enforces that action sequences that get high rewards have high total probabilities. Total probability is here defined as the product of probabilities of all actions taken: $p\_{total}=p_1 p_2 ... p_n$.
+This repository implements an new class of a thermodynamics inspired algorithms for reinforcement learning, together with experiments demonstrating it's usability. Just as particles in nature generally prefer to occupy states/locations with lower total energy (there's more air particles down here compared to 100km away from earth), the algorithm proposed and implemented here enforces that action sequences that get high rewards have high total probabilities. Total probability is here defined as the product of probabilities of all actions taken: $p\_{total}=p_1 p_2 ... p_n$.
 
 As a quick demo, here's a neural network trained using the Policy Annealing algorithm to take a moonlander to a safe stop. For training, see [Usage/Lunar Lander](#lunar-lander).
 
@@ -8,7 +8,7 @@ As a quick demo, here's a neural network trained using the Policy Annealing algo
 
 ## Installation
 
-This project requires Python 3.10+ to be installed.
+This project requires Python 3.10-3.12 to be installed.
 
 On Linux based systems, installing other dependencies is relatively easy:
 
@@ -185,23 +185,43 @@ We can then define two neural networks, one for computing $V'$ and another for t
 
 Experiments show that this technique can be quite sample efficient, however it needs a relatively large number of training steps on each batch of samples. This is because the value and policy networks learn together on one equation, but the policy network often learns wrong behaviour while the value network has not converged yet.
 
-## Comparison to related algorithms
+### As a regularization method (better entropy)
 
-### Simulated Annealing
+**Note:** this is currently work in progress and can't be run from `scripts/main.py`, however there are some quick experiments [showing much better stability properties](#policy-annealing-seems-to-be-more-stable) compared to other regularization methods.
 
-While Simulated Annealing (SA) has some superficial similarities with Policy Annealing (PA), the task solved is completely different. SA attempts to find an optimal solution by choosing solutions based on Boltzmann probability distribution. PA on the other hand, trains a function (neural network) that generates optimal solutions.
+One problem with the methods described above is that they both define their own loss functions, which aren't obviously similar to the Policy Gradients method. This means that Policy Annealing, in the previously mentioned form, is hard to apply to state of the art algorithms like PPO, which have accumulated decades of improvements from prior research.
 
-### Entropy Bonus regularization
+To remedy this, we modify the above equations by defining entropy regularized reward (ERR) as:
+
+```math
+R_i' = R_i - T \cdot log(p_i)
+```
+
+Then we note that the core equation derived in [technical description](#technical-description) is very similar to the definition of value in general:
+
+```math
+V_{i}' = R_{i}' + R_{i+1}' + ... + R_{i+k}'
+```
+
+Thus we can treat entropy regularized rewards just as we would treat rewards normally in any RL method (both for value estimation and policy changes), and still, at least theoretically arrive at the same Boltzmann distribution. There is preliminary theoretical and experimental evidence for superior stability compared to alternative methods such as entropy bonus.
+
+## Comparison to Entropy Bonus
 
 Entropy bonus regularization is a common technique in modern deep reinforcement learning. The goal is to encourage exploration by adding the policy's entropy, scaled by a temperature parameter $\alpha$ (equivalent to T in our model), to the reward signal. The objective is to find a policy $\pi$ that maximizes the expectation of $R + \alpha * H(\pi)$, where $H$ is the policy's entropy.
 
-#### Shared theoretical optimum
+### Policy Annealing seems to be more stable
 
-The core mathematical form $R - T * log(p)$ is central to both Policy Annealing and entropy-regularized RL. In fact, the policy that maximizes the entropy-augmented objective $E[R] + T*H(π)$ is the Boltzmann distribution, $p \propto e^{R/T}$. This is the same distribution that Policy Annealing aims to produce by enforcing its "constant value" condition. Therefore, both algorithms are striving towards the same optimal policy for a given temperature.
+Both theoretical arguments and toy simulations show that Policy Annealing based algorithms have much better stability characteristics than Entropy Bonus.
 
-#### Policy Annealing is more stable (at least in theory)
+For example, let's take an RL environment that has no input, but three possible actions: $A$ (fixed low reward), $B$ (fixed low reward) and $C$ (fixed high reward). Each episode only lasts one action (essentially 3-armed bandit with deterministic reward).
 
-Policy annealing finds and stays at the optimal distribution, while Entropy bonus may cause the policy to never settle. As an example, let's assume our RL environment has no input, but three possible actions: $A$ (fixed low reward), $B$ (fixed low reward) and $C$ (fixed high reward), and each episode only lasts one action (essentially 3-armed bandit with deterministic rewards). For policy annealing, given a temperature T, we can solve for the probability distribution, and find that no matter what action was taken, there is zero gradient (the solution is stationary). On the other hand, for entropy bonus, if we take action $B$, the loss function would attempt to equalize the probability between $A$ and $C$, thus never really resulting in a stationary policy.
+The below simulation shows how the probabilities of actions change for three different methods: Policy Gradients without any regularization (blue), 2) Policy Gradients with Entropy Bonus (red), 3) Policy Gradients with [Policy Annealing Regularization](#as-a-regularization-method-better-entropy) (green)
+
+https://github.com/user-attachments/assets/3c387fd8-7f02-49be-bbcb-fdeed156a2de
+
+Note that Policy Annealing regularization allows the policy to become stationary at some optimal distribution, while Entropy Bonus never truly settles.
+
+Why is that? For policy annealing, given a temperature T, we can solve for the probability distribution, and find that no matter what action was taken, there is zero advantage and thus also gradient (rewards are fully compensated by the $-T \cdot log(p)$ terms). Thus the solution is stationary. On the other hand, for entropy bonus, if on one step we take for example action $A$, the loss function would attempt to equalize the probability between $B$ and $C$. However, $B$ and $C$ have different rewards, so they should not converge to the same probability. This causes constant and unnecessary fluctuations in the final policy.
 
 ## Codebase
 
