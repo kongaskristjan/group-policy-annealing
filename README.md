@@ -62,7 +62,7 @@ python scripts/main.py --value-function direct --batch-size 4 --num-episode-batc
 
 A relatively lucky from-scratch training:
 
-https://github.com/user-attachments/assets/7df2edd7-20dc-49d8-97dc-27ac8d1c4313
+![Achieving max reward on cartpole environment with just around 24 episodes](https://github.com/user-attachments/assets/f7398169-7878-402d-a234-d473f428afba)
 
 Here's a much more stable setup that almost always converges:
 
@@ -72,11 +72,11 @@ python scripts/main.py --value-function grouped --batch-size 32 --group-size 8 -
 
 The final solution seems more convincing:
 
-https://github.com/user-attachments/assets/50dae70d-556a-4041-9a1d-7fb8ff77ad46
+![Cart pole is balanced quite well](https://github.com/user-attachments/assets/e553bba0-7e0b-4439-896f-80cd7572549f)
 
 With validation mode on (always choosing the highest probability action), the solution gets so good that it's even boring:
 
-https://github.com/user-attachments/assets/d861589b-2d54-40f7-b0c2-839c1039b4fb
+![Cart pole is balanced extremely well](https://github.com/user-attachments/assets/ca4e973a-fd6d-4f89-81d0-62930d85e690)
 
 ### Lunar Lander
 
@@ -93,7 +93,7 @@ To visualize a trained agent in validation mode, load its policy file:
 python scripts/main.py --env-name LunarLander-v3 --validate --render full --load-model runs/[timestamp]/[experiment_number]/models/[episode_batch_number]/policy.pth
 ```
 
-https://github.com/user-attachments/assets/4d831a23-83fe-4633-a66d-4175672a93fb
+![Moonlanders fire thrusters in a way to successfully land on a platform](https://github.com/user-attachments/assets/9cecaade-91cd-4dbe-b2c1-19a632622d43)
 
 ## Technical description
 
@@ -218,7 +218,7 @@ For example, let's take an RL environment that has no input but three possible a
 
 The simulation below shows how the action probabilities change for three methods: Policy Gradients without regularization (blue), Policy Gradients with Entropy Bonus (red), and Policy Gradients with Policy Annealing Regularization (green, proposed algorithm).
 
-https://github.com/user-attachments/assets/b6b15c2d-8df1-4901-a1c2-025c4911db5f
+![Entropy Bonus vs Stable Entropy. Stable Entropy converges to a single probability value while Entropy Bonus causes constant fluctuations.](https://github.com/user-attachments/assets/e095c5bc-6c2a-4ad4-b0ce-fb72853e29d3)
 
 Note that Policy Annealing regularization allows the policy to become stationary at an optimal distribution, while the Entropy Bonus policy never truly settles. For Policy Annealing, at the optimal distribution, the rewards are fully compensated by the $-T \cdot \log(p)$ terms, resulting in zero advantage and a stationary policy. However, because Entropy Bonus attempts to equalize probabilities of actions it didn't even choose (and thus have no data on the reward outcome), there will always be unnecessary fluctuations in the output probability.
 
