@@ -17,7 +17,7 @@ NUM_ACTIONS = len(REWARDS)
 TEMPERATURE = 0.5
 LEARNING_RATE = 1.0
 BATCH_SIZE = 4
-NUM_TRAINING_STEPS = 200
+NUM_TRAINING_STEPS = 300
 
 
 # --- Policy Model ---
@@ -89,8 +89,8 @@ def run_simulation() -> dict[str, np.ndarray]:
     # fmt: off
     algorithms: list[dict[str, Any]] = [
         {"name": "Policy Gradients without regularization", "loss_fn": calculate_pg_eb_loss, "history": [], "kwargs": {"use_entropy": False}},
-        {"name": "Policy Gradients + Entropy Bonus", "loss_fn": calculate_pg_eb_loss, "history": [], "kwargs": {"use_entropy": True}},
-        {"name": "Policy Gradients + Policy Annealing Regularization", "loss_fn": calculate_annealing_based_loss, "history": [], "kwargs": {"use_policy_gradient": True}},
+        {"name": "Policy Gradients + Entropy Bonus (Industry standard)", "loss_fn": calculate_pg_eb_loss, "history": [], "kwargs": {"use_entropy": True}},
+        {"name": "Policy Gradients + Stable Entropy (Proposed algorithm)", "loss_fn": calculate_annealing_based_loss, "history": [], "kwargs": {"use_policy_gradient": True}},
         # {"name": "Grouped Policy Annealing", "loss_fn": calculate_annealing_based_loss, "history": [], "kwargs": {"use_policy_gradient": False}},
     ]
     # fmt: on
@@ -207,7 +207,7 @@ def create_animation(histories: dict[str, np.ndarray]):
     ]
 
     fig.update_layout(
-        title="Policy Annealing variants vs Entropy Bonus",
+        title="Entropy Bonus vs Stable Entropy (Proposed algorithm)",
         xaxis_title="Action",
         yaxis_title="Probability",
         yaxis_range=[0, 1],

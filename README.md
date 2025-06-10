@@ -67,7 +67,7 @@ https://github.com/user-attachments/assets/7df2edd7-20dc-49d8-97dc-27ac8d1c4313
 Here's a much more stable setup that almost always converges:
 
 ```bash
-python scripts/main.py --value-function grouped --env-name CartPole-v1 --num-episode-batches 10 --temp-start 0.5 --temp-end 0.5
+python scripts/main.py --value-function grouped --batch-size 32 --group-size 8 --env-name CartPole-v1 --num-episode-batches 10 --temp-start 0.5 --temp-end 0.5
 ```
 
 The final solution seems more convincing:
@@ -186,11 +186,9 @@ We can then define two neural networks: one for computing the value $V_i'$ and a
 
 Experiments show that this technique can be quite sample-efficient, however it may need a relatively large number of training steps on each batch of samples. This is because the value and policy networks learn together from one equation, but the policy network can learn wrong behavior while the value network has not yet converged.
 
-### As a regularization method (Better Entropy)
+### As a regularization method (Stable Entropy)
 
-**Note:** this is currently work in progress and can't be run from `scripts/main.py`, however there are some quick experiments [showing much better stability properties](#policy-annealing-seems-to-be-more-stable) compared to other regularization methods.
-
-One problem with the methods described above is that they define their own loss functions, which aren't obviously similar to the Policy Gradients method. This means that Policy Annealing, in its previous forms, is hard to apply to state-of-the-art algorithms like PPO.
+One problem with the Policy Annealing methods described above is that they define their own loss functions, which aren't obviously similar to the Policy Gradients method. This means that Policy Annealing, in its previous forms, is hard to apply to state-of-the-art algorithms.
 
 To remedy this, we can define an "entropy-regularized reward" (ERR) as:
 
@@ -204,23 +202,25 @@ We can then see that our core equation is simply the sum of these new rewards:
 V_{i}' = R_{i}' + R_{i+1}' + ... + R_{i+k}'
 ```
 
-Thus, we can treat these entropy-regularized rewards just as we would treat standard rewards in any RL method (for both value estimation and policy updates) and still, theoretically, arrive at the same Boltzmann distribution.
+Thus, we can treat these entropy-regularized rewards just as we would treat standard rewards in any RL method (for both value estimation and policy updates) and still, at least theoretically, arrive at the same Boltzmann distribution. At the same time, we can use the bells and whistles that have been invented for algorithms like PPO.
+
+**Note:** this is a work in progress and can't be run from `scripts/main.py`, however there are some quick experiments [showing much better stability properties](#policy-annealing-based-regularization-seems-to-be-more-stable) compared to other regularization methods such as Entropy Bonus.
 
 ## Comparison to Entropy Bonus
 
-Entropy bonus regularization is a common technique in modern deep reinforcement learning. The goal is to encourage exploration by adding the policy's entropy, scaled by a temperature parameter $\alpha$ (equivalent to T in our model), to the reward signal. The objective is to find a policy $\pi$ that maximizes the expectation of $R + \alpha \cdot H(\pi)$, where $H$ is the policy's entropy.
+Entropy bonus regularization is a common technique in modern deep reinforcement learning. The goal is to encourage exploration by adding the policy's entropy, scaled by a temperature parameter $\alpha$ (equivalent to $T$ in our model), to the reward signal. The objective is to find a policy $\pi$ that maximizes the average of $R + \alpha \cdot H(\pi)$, where $H$ is the policy's entropy.
 
-### Policy Annealing seems to be more stable
+### Policy Annealing based regularization seems to be more stable
 
 Both theoretical arguments and toy simulations show that Policy Annealing based algorithms have much better stability characteristics than Entropy Bonus.
 
 For example, let's take an RL environment that has no input but three possible actions: $A$ (low reward), $B$ (low reward), and $C$ (high reward). Each episode only lasts one action.
 
-The simulation below shows how the action probabilities change for three methods: Policy Gradients without regularization (blue), Policy Gradients with Entropy Bonus (red), and Policy Gradients with Policy Annealing Regularization (green).
+The simulation below shows how the action probabilities change for three methods: Policy Gradients without regularization (blue), Policy Gradients with Entropy Bonus (red), and Policy Gradients with Policy Annealing Regularization (green, proposed algorithm).
 
-https://github.com/user-attachments/assets/3c387fd8-7f02-49be-bbcb-fdeed156a2de
+https://github.com/user-attachments/assets/b6b15c2d-8df1-4901-a1c2-025c4911db5f
 
-Note that Policy Annealing regularization allows the policy to become stationary at an optimal distribution, while the Entropy Bonus policy never truly settles. For Policy Annealing, at the optimal distribution, the rewards are fully compensated by the $-T \cdot \log(p)$ terms, resulting in zero advantage and a stationary policy. For Entropy Bonus, the loss function constantly fluctuates as it tries to balance different rewards with a uniform exploration drive, leading to an unstable final policy.
+Note that Policy Annealing regularization allows the policy to become stationary at an optimal distribution, while the Entropy Bonus policy never truly settles. For Policy Annealing, at the optimal distribution, the rewards are fully compensated by the $-T \cdot \log(p)$ terms, resulting in zero advantage and a stationary policy. However, because Entropy Bonus attempts to equalize probabilities of actions it didn't even choose (and thus have no data on the reward outcome), there will always be unnecessary fluctuations in the output probability.
 
 ## Codebase
 
